@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AI Autofill Studio",
-  "version": "0.1.0",
-  "description": "Auto-fill bat ky form nao tren bat ky trang web nao bang AI. Locator engine kieu Playwright + DevTools panel + CDP trusted input.",
+  "name": "Autofill Studio",
+  "version": "0.2.0",
+  "description": "Dien bat ky form nao tren bat ky trang web nao bang AI. Locator engine kieu Playwright, DevTools panel, CDP trusted input, va bo nho theo man hinh.",
   "minimum_chrome_version": "116",
 
   "permissions": [
@@ -35,7 +35,7 @@
   "options_page": "src/options/options.html",
 
   "action": {
-    "default_title": "AI Autofill Studio"
+    "default_title": "Autofill Studio"
   },
 
   "content_scripts": [

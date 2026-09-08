@@ -1,4 +1,4 @@
-/* AI Autofill Studio — devtools/panel.js
+/* Autofill Studio — devtools/panel.js
  * Inspector kieu Playwright chay ben trong Chrome DevTools.
  */
 const $ = (s) => document.querySelector(s);

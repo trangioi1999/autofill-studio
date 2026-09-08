@@ -1,4 +1,4 @@
-/* AI Autofill Studio — content/40-picker.js
+/* Autofill Studio — content/40-picker.js
  * Lop overlay kieu Chrome DevTools: highlight khi hover, chon element bang click,
  * danh so cac field da nhan dien, nhay xanh/do sau khi dien.
  */

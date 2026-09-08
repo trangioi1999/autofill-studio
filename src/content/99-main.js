@@ -1,4 +1,4 @@
-/* AI Autofill Studio — content/99-main.js
+/* Autofill Studio — content/99-main.js
  * Cau noi giua service worker / side panel / DevTools panel voi frame nay.
  */
 (() => {

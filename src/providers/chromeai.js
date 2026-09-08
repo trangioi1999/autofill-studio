@@ -1,4 +1,4 @@
-/* AI Autofill Studio — providers/chromeai.js
+/* Autofill Studio — providers/chromeai.js
  * Chrome Built-in AI (Gemini Nano) qua Prompt API. Chay hoan toan tren may,
  * mien phi, khong can API key. Yeu cau Chrome >= 138 va model da tai ve.
  */

@@ -1,18 +1,20 @@
-/* AI Autofill Studio — background/service-worker.js
+/* Autofill Studio — background/service-worker.js
  * Dieu phoi: quet field tren moi frame, goi AI, chay ke hoach (DOM hoac CDP).
  */
 import { getSettings, setSettings, resetSettings, pushHistory, DEFAULTS } from '../lib/storage.js';
 import { SYSTEM_PROMPT, PLAN_SCHEMA, buildUserPrompt, planToSteps } from '../lib/prompt.js';
 import { complete, testProvider, geminiOAuthLogin, geminiOAuthLogout, chromeaiAvailability, bridgeHealth, PROVIDERS } from '../providers/index.js';
 import * as CDP from './cdp.js';
+import * as Mem from '../lib/memory.js';
+import { screenKey } from '../lib/screen.js';
 
 /* ------------------------------------------------------------------ setup */
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: 'af-open', title: 'AI Autofill: mo bang dieu khien', contexts: ['all'] });
-    chrome.contextMenus.create({ id: 'af-fill', title: 'AI Autofill: dien form nay', contexts: ['all'] });
-    chrome.contextMenus.create({ id: 'af-pick', title: 'AI Autofill: chon element (inspect)', contexts: ['all'] });
+    chrome.contextMenus.create({ id: 'af-open', title: 'Autofill Studio: mo bang dieu khien', contexts: ['all'] });
+    chrome.contextMenus.create({ id: 'af-fill', title: 'Autofill Studio: dien form nay', contexts: ['all'] });
+    chrome.contextMenus.create({ id: 'af-pick', title: 'Autofill Studio: chon element (inspect)', contexts: ['all'] });
   });
 });
 
@@ -190,6 +192,59 @@ async function runPlan({ tabId, steps }) {
   return results;
 }
 
+/* ---------------------------------------------------------------- memory */
+
+async function tabUrl(tabId) {
+  try {
+    const t = await chrome.tabs.get(tabId);
+    return { url: t?.url || '', title: t?.title || '' };
+  } catch {
+    return { url: '', title: '' };
+  }
+}
+
+/** Chup lai gia tri dang co tren form thanh mot ban luu. */
+async function memSave({ tabId, name, id, auto = false }) {
+  const { url, title } = await tabUrl(tabId);
+  const { fields } = await scanTab(tabId, { deep: false });
+  const entries = Mem.entriesFromFields(fields);
+
+  if (auto) {
+    // Ban tu dong: moi man hinh chi giu mot ban, ghi de cho khoi phinh
+    const mine = (await Mem.snapshotsFor(url)).find((s) => s.auto);
+    if (mine) {
+      const saved = await Mem.saveSnapshot({ url, title, entries, id: mine.id, name: mine.name });
+      return { ...saved, updated: true };
+    }
+  }
+  return Mem.saveSnapshot({ url, title, name, entries, id, auto });
+}
+
+/** Quet trang roi dung mot ban luu de sinh step (khong goi AI). */
+async function memPlan({ tabId, id }) {
+  const { fields } = await scanTab(tabId, { deep: false });
+  const r = await Mem.useSnapshot(id, fields);
+  return { ...r, fields };
+}
+
+/** Duong tat: quet -> ghep bo nho -> dien luon. */
+async function memApply({ tabId, id }) {
+  const emit = (e) => chrome.runtime.sendMessage({ type: 'AF_EVENT', ...e }).catch(() => {});
+  emit({ phase: 'scan', message: 'Dang quet field...' });
+  const { steps, matched, missing, fields, snapshot } = await memPlan({ tabId, id });
+  emit({ phase: 'scanned', count: fields.length, frames: 1, fields });
+  emit({ phase: 'planned', steps, skipped: missing, ms: 0, source: 'memory', snapshot: { id: snapshot.id, name: snapshot.name } });
+  if (!steps.length) {
+    emit({ phase: 'done', results: [], ok: 0, total: 0 });
+    return { ok: 0, total: 0, matched, missing };
+  }
+  emit({ phase: 'run', message: `Dang dien ${steps.length} field tu bo nho...` });
+  const results = await runPlan({ tabId, steps });
+  const okCount = results.filter((r) => r.ok).length;
+  emit({ phase: 'done', results, ok: okCount, total: results.length, source: 'memory' });
+  return { ok: okCount, total: results.length, matched, missing, results };
+}
+
 /* ------------------------------------------------------------- full flow */
 
 async function autofill({ tabId, request, onEvent }) {
@@ -216,6 +271,16 @@ async function autofill({ tabId, request, onEvent }) {
 
   await setSettings({ lastPrompt: request });
   await pushHistory({ url: context.url, request, ok: okCount, total: results.length });
+
+  // Tu dong ghi nho man hinh nay de lan sau dien lai khong ton mot lan goi AI
+  if (settings.autoSaveSnapshot && okCount > 0) {
+    try {
+      const snap = await memSave({ tabId, auto: true });
+      emit({ phase: 'saved', snapshot: { id: snap.id, name: snap.name, count: snap.entries.length } });
+    } catch (e) {
+      emit({ phase: 'run', message: 'Khong luu duoc bo nho: ' + e.message });
+    }
+  }
 
   return { fields, plan, results };
 }
@@ -293,6 +358,18 @@ const routes = {
   AF_CDP_DETACH: async (m) => ({ ok: await CDP.detach(m.tabId) }),
   AF_CDP_STATUS: (m) => ({ attached: CDP.isAttached(m.tabId) }),
   AF_SCREENSHOT: async (m) => ({ ok: true, dataUrl: await CDP.screenshot(m.tabId) }),
+
+  AF_MEM_LIST: () => Mem.listSnapshots(),
+  AF_MEM_FOR_TAB: async (m) => {
+    const { url, title } = await tabUrl(m.tabId);
+    return { key: screenKey(url), url, title, snapshots: await Mem.snapshotsFor(url) };
+  },
+  AF_MEM_SAVE: (m) => memSave(m),
+  AF_MEM_PLAN: (m) => memPlan(m),
+  AF_MEM_APPLY: (m) => memApply(m),
+  AF_MEM_RENAME: (m) => Mem.renameSnapshot(m.id, m.name),
+  AF_MEM_DELETE: (m) => Mem.deleteSnapshot(m.id),
+  AF_MEM_CLEAR: () => Mem.clearSnapshots(),
 
   AF_FRAME_READY: () => ({ ok: true }),
 };

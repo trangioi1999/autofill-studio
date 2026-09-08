@@ -1,4 +1,4 @@
-/* AI Autofill Studio — providers/index.js */
+/* Autofill Studio — providers/index.js */
 import { geminiComplete, geminiOAuthLogin, geminiOAuthLogout, geminiOAuthToken } from './gemini.js';
 import { anthropicComplete } from './anthropic.js';
 import { openaiComplete } from './openai.js';

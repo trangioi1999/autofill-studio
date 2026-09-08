@@ -1,4 +1,4 @@
-/* AI Autofill Studio — providers/openai.js
+/* Autofill Studio — providers/openai.js
  * Bat ky endpoint tuong thich OpenAI Chat Completions:
  * OpenAI, OpenRouter, DeepSeek, Groq, Together, LM Studio, vLLM, Ollama (/v1),
  * hoac gateway noi bo cua doanh nghiep.
@@ -29,7 +29,7 @@ export async function openaiComplete({ cfg, system, user, schema, signal }) {
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   // OpenRouter thich co 2 header nay
   headers['HTTP-Referer'] = 'chrome-extension://ai-autofill-studio';
-  headers['X-Title'] = 'AI Autofill Studio';
+  headers['X-Title'] = 'Autofill Studio';
 
   let res = await fetch(`${base}/chat/completions`, {
     method: 'POST',

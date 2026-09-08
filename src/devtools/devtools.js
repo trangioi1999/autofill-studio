@@ -1,4 +1,4 @@
-/* AI Autofill Studio — devtools/devtools.js
- * Dang ky tab "AI Autofill" trong Chrome DevTools.
+/* Autofill Studio — devtools/devtools.js
+ * Dang ky tab "Autofill Studio" trong Chrome DevTools.
  */
-chrome.devtools.panels.create('AI Autofill', '', 'panel.html', () => {});
+chrome.devtools.panels.create('Autofill Studio', '', 'panel.html', () => {});

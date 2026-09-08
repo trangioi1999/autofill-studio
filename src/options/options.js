@@ -1,4 +1,4 @@
-/* AI Autofill Studio — options/options.js */
+/* Autofill Studio — options/options.js */
 
 const $ = (s) => document.querySelector(s);
 const send = (msg) => chrome.runtime.sendMessage(msg);
@@ -27,6 +27,8 @@ const FIELDS = {
   deepScan: '#deepScan',
   cdpMode: '#cdpMode',
   stopOnError: '#stopOnError',
+  autoSaveSnapshot: '#autoSaveSnapshot',
+  autoSuggestSnapshot: '#autoSuggestSnapshot',
   typeDelay: '#typeDelay',
   maxFields: '#maxFields',
 };

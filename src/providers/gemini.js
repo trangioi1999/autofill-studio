@@ -1,4 +1,4 @@
-/* AI Autofill Studio — providers/gemini.js
+/* Autofill Studio — providers/gemini.js
  * Ho tro 2 duong: API key (Generative Language API) va OAuth chinh chu (Vertex AI).
  */
 import { parseJsonLoose } from '../lib/prompt.js';

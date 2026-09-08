@@ -1,4 +1,4 @@
-/* AI Autofill Studio — providers/anthropic.js
+/* Autofill Studio — providers/anthropic.js
  * Goi Claude Messages API truc tiep tu extension.
  * Header `anthropic-dangerous-direct-browser-access` la bat buoc khi goi tu trinh duyet.
  * Dung tool-use de ep model tra ve JSON dung schema.

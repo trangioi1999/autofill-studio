@@ -1,4 +1,4 @@
-/* AI Autofill Studio — providers/bridge.js
+/* Autofill Studio — providers/bridge.js
  * Goi toi Local Bridge chay tren may cua ban (bridge/server.mjs).
  * Bridge se chuyen tiep sang CLI ban da dang nhap san: Claude Code, Gemini CLI,
  * Kiro / Amazon Q, hoac Ollama. Nho vay khong can dan API key vao extension,

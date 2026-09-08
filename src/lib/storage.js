@@ -1,4 +1,4 @@
-/* AI Autofill Studio — lib/storage.js */
+/* Autofill Studio — lib/storage.js */
 
 export const DEFAULTS = {
   provider: 'gemini',
@@ -43,6 +43,11 @@ export const DEFAULTS = {
   typeDelay: 20,
   stopOnError: false,
   maxFields: 120,
+
+  // Bo nho theo man hinh
+  autoSaveSnapshot: true, // tu luu lai gia tri sau moi lan autofill thanh cong
+  autoSuggestSnapshot: true, // tu goi y ban luu khi mo mot trang da tung dien
+
   lastPrompt: '',
   history: [],
 };

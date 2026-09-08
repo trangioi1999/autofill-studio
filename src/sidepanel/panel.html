@@ -3,70 +3,103 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AI Autofill Studio</title>
+    <title>Autofill Studio</title>
     <link rel="stylesheet" href="panel.css" />
   </head>
   <body>
-    <header class="bar">
-      <div class="brand">
-        <span class="dot"></span>
-        <strong>AI Autofill</strong>
+    <header class="topbar">
+      <div class="ident">
+        <span class="glyph" id="glyph"></span>
+        <div class="ident-text">
+          <div class="title">Autofill Studio</div>
+          <div class="sub" id="screen">dang doc trang...</div>
+        </div>
       </div>
-      <div class="bar-right">
-        <button id="btn-cdp" class="chip" title="Che do CDP: gui event that su (trusted) qua chrome.debugger">DOM</button>
-        <span id="provider" class="chip muted">—</span>
-        <button id="btn-settings" class="icon" title="Cai dat">⚙</button>
+      <div class="topbar-actions">
+        <button id="btn-mode" class="pill" title="Che do gui su kien">DOM</button>
+        <button id="btn-settings" class="iconbtn" title="Cai dat" aria-label="Cai dat">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 5 8.9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9.5a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+          </svg>
+        </button>
       </div>
+      <div class="progress" id="progress"><span></span></div>
     </header>
 
-    <section class="pad">
-      <label class="lbl" for="prompt">Ban muon dien gi?</label>
-      <textarea
-        id="prompt"
-        rows="3"
-        placeholder="VD: Dien don ung tuyen vi tri Senior Angular Developer, 6 nam kinh nghiem, o TP.HCM"
-      ></textarea>
-
-      <div class="row gap">
-        <button id="btn-run" class="primary grow">Quet &amp; dien tu dong</button>
-        <button id="btn-scan" title="Chi quet, chua dien">Quet</button>
-      </div>
-      <div class="row gap">
-        <button id="btn-highlight" class="ghost">Danh dau field</button>
-        <button id="btn-pick" class="ghost">Chon element</button>
-        <button id="btn-clear" class="ghost">Xoa overlay</button>
-      </div>
-    </section>
-
-    <nav class="tabs">
-      <button data-tab="fields" class="on">Fields <span id="c-fields" class="count">0</span></button>
-      <button data-tab="plan">Ke hoach <span id="c-plan" class="count">0</span></button>
-      <button data-tab="log">Log</button>
+    <nav class="tabs" role="tablist">
+      <button data-view="run" class="on">Hoat dong</button>
+      <button data-view="fields">Fields <span id="c-fields" class="badge">0</span></button>
+      <button data-view="plan">Ke hoach <span id="c-plan" class="badge">0</span></button>
+      <button data-view="memory">Bo nho <span id="c-mem" class="badge">0</span></button>
     </nav>
 
-    <section id="tab-fields" class="panel">
-      <div class="filter">
-        <input id="q" type="search" placeholder="Loc theo nhan / ten / loai..." />
-      </div>
-      <div id="fields" class="list"></div>
-      <p class="empty" id="fields-empty">Bam <b>Quet</b> de tim cac o nhap lieu tren trang.</p>
-    </section>
+    <main class="scroll">
+      <!-- ---------------------------------------------------------- run -->
+      <section id="view-run" class="view">
+        <div id="recall" class="recall hide"></div>
+        <div id="stream" class="stream"></div>
+        <p class="empty" id="run-empty">
+          Mo mot trang co form, viet yeu cau o duoi roi bam <b>gui</b>.<br />
+          Hoac bam <b>Quet</b> de xem truoc cac o nhap lieu.
+        </p>
+      </section>
 
-    <section id="tab-plan" class="panel hide">
-      <div id="plan" class="list"></div>
-      <p class="empty" id="plan-empty">Chua co ke hoach. Nhap yeu cau roi bam <b>Quet &amp; dien tu dong</b>.</p>
-      <div class="row gap sticky" id="plan-actions" style="display: none">
-        <button id="btn-apply" class="primary grow">Ap dung ke hoach</button>
-        <button id="btn-copy-plan" class="ghost">Copy JSON</button>
-      </div>
-    </section>
+      <!-- ------------------------------------------------------- fields -->
+      <section id="view-fields" class="view hide">
+        <input id="q" type="search" class="search" placeholder="Loc theo nhan / ten / loai..." />
+        <div id="fields" class="list"></div>
+        <p class="empty" id="fields-empty">Chua quet. Bam <b>Quet</b> o thanh duoi.</p>
+      </section>
 
-    <section id="tab-log" class="panel hide">
-      <pre id="log" class="log"></pre>
-      <div class="row gap"><button id="btn-clearlog" class="ghost grow">Xoa log</button></div>
-    </section>
+      <!-- --------------------------------------------------------- plan -->
+      <section id="view-plan" class="view hide">
+        <div id="plan-head" class="plan-head hide"></div>
+        <div id="plan" class="list"></div>
+        <p class="empty" id="plan-empty">Chua co ke hoach nao.</p>
+      </section>
+
+      <!-- ------------------------------------------------------- memory -->
+      <section id="view-memory" class="view hide">
+        <div class="memory-actions">
+          <button id="btn-mem-save" class="btn primary grow">Luu man hinh nay</button>
+          <button id="btn-mem-refresh" class="btn" title="Tai lai danh sach">↻</button>
+        </div>
+        <p class="hint">
+          Luu lai gia tri dang co tren form. Lan sau vao lai man hinh nay, bam
+          <b>Dien</b> la xong — khong goi AI, khong ton token. O mat khau / OTP / the
+          khong bao gio duoc luu.
+        </p>
+        <div id="mem-this" class="list"></div>
+        <div class="lbl mt" id="mem-other-lbl">Man hinh khac</div>
+        <div id="mem-other" class="list"></div>
+        <p class="empty" id="mem-empty">Chua luu man hinh nao.</p>
+      </section>
+    </main>
 
     <div id="picked" class="picked hide"></div>
+
+    <footer class="composer">
+      <div class="chips">
+        <span id="provider" class="chip">—</span>
+        <button id="btn-scan" class="chip act">Quet</button>
+        <button id="btn-highlight" class="chip act">Danh dau</button>
+        <button id="btn-pick" class="chip act">Chon element</button>
+        <button id="btn-clear" class="chip act">Xoa overlay</button>
+      </div>
+      <div class="input-wrap">
+        <textarea
+          id="prompt"
+          rows="1"
+          placeholder="Vi du: dien don ung tuyen Senior Angular Dev, 6 nam kinh nghiem, o TP.HCM"
+        ></textarea>
+        <button id="btn-run" class="send" title="Quet & dien tu dong (Cmd/Ctrl + Enter)" aria-label="Chay">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      </div>
+    </footer>
 
     <script type="module" src="panel.js"></script>
   </body>

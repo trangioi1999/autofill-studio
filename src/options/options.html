@@ -2,7 +2,7 @@
 <html lang="vi">
   <head>
     <meta charset="utf-8" />
-    <title>AI Autofill Studio — Cai dat</title>
+    <title>Autofill Studio — Cai dat</title>
     <link rel="stylesheet" href="../sidepanel/panel.css" />
     <style>
       body { max-width: 780px; margin: 0 auto; padding: 24px 20px 60px; display: block; }
@@ -27,7 +27,7 @@
     </style>
   </head>
   <body>
-    <h1>AI Autofill Studio</h1>
+    <h1>Autofill Studio</h1>
     <p class="hint" style="color: var(--muted); font-size: 12px">
       Dien du lieu vao form tren bat ky trang web nao bang AI. Locator kieu Playwright, overlay kieu DevTools.
     </p>
@@ -197,6 +197,16 @@ Chuc danh: Senior Frontend Developer"></textarea>
         <input type="checkbox" id="cdpMode" />
         <label for="cdpMode">Che do CDP — gui event that su qua chrome.debugger (Chrome hien thanh vang, nhung qua duoc trang phong thu chat)</label>
       </div>
+      <div class="inline">
+        <input type="checkbox" id="autoSaveSnapshot" />
+        <label for="autoSaveSnapshot">Tu ghi nho man hinh — sau moi lan dien thanh cong, luu lai gia tri de lan sau dien lai khong can goi AI</label>
+      </div>
+
+      <div class="inline">
+        <input type="checkbox" id="autoSuggestSnapshot" />
+        <label for="autoSuggestSnapshot">Tu goi y ban luu khi mo lai mot man hinh da tung dien</label>
+      </div>
+
       <div class="inline">
         <input type="checkbox" id="stopOnError" />
         <label for="stopOnError">Dung ngay khi 1 buoc that bai</label>

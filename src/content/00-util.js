@@ -1,4 +1,4 @@
-/* AI Autofill Studio — content/00-util.js
+/* Autofill Studio — content/00-util.js
  * Namespace dung chung cho tat ca content scripts (classic scripts, khong phai module).
  */
 (() => {

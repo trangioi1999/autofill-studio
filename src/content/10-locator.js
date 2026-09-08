@@ -1,4 +1,4 @@
-/* AI Autofill Studio — content/10-locator.js
+/* Autofill Studio — content/10-locator.js
  * Locator engine kieu Playwright: getByRole / getByLabel / getByPlaceholder /
  * getByText / getByTestId / css / xpath, xuyen shadow DOM, co auto-wait.
  */

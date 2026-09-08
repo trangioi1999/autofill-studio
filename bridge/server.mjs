@@ -5,7 +5,7 @@
  * dang nhap san bang tai khoan chinh chu:
  *   - Claude Code CLI   (`claude`)
  *   - Gemini CLI        (`gemini`)
- *   - Amazon Q / Kiro   (`q`)
+ *   - Kiro CLI          (`kiro`, hoac `q` neu con ban Amazon Q Developer cu)
  *   - Ollama            (http://127.0.0.1:11434)
  *   - Lenh tuy y        (bien moi truong AF_CMD)
  *
@@ -92,6 +92,60 @@ const which = async (cmd) => {
   }
 };
 
+/* ------------------------------------------------------- binary resolution
+ * Mot backend logic co the mang nhieu ten binary khac nhau tuy phien ban.
+ * Vi du Amazon Q Developer CLI (`q`) da doi ten thanh Kiro CLI (`kiro`), nen
+ * ta thu lan luot va dung cai nao co that tren may.
+ */
+
+const BIN_CANDIDATES = {
+  claude: ['claude'],
+  gemini: ['gemini'],
+  kiro: ['kiro', 'kiro-cli', 'q'], // Kiro CLI moi truoc, Amazon Q Developer cu sau
+};
+
+const BIN_TTL = 15000;
+const binCache = new Map(); // logical -> { bin, at }
+
+async function resolveBin(logical) {
+  const hit = binCache.get(logical);
+  if (hit && Date.now() - hit.at < BIN_TTL) return hit.bin;
+  let bin = null;
+  for (const c of BIN_CANDIDATES[logical] || [logical]) {
+    if (await which(c)) {
+      bin = c;
+      break;
+    }
+  }
+  binCache.set(logical, { bin, at: Date.now() });
+  return bin;
+}
+
+async function runBin(logical, args, input) {
+  const bin = await resolveBin(logical);
+  if (!bin) {
+    const tried = (BIN_CANDIDATES[logical] || [logical]).join(', ');
+    throw new Error(`Khong tim thay CLI cho "${logical}" tren PATH (da thu: ${tried})`);
+  }
+  return run(bin, args, input);
+}
+
+/** Danh sach backend dang co, kem ten binary that su. */
+async function availableBackends() {
+  const out = [];
+  for (const logical of Object.keys(BIN_CANDIDATES)) {
+    const bin = await resolveBin(logical);
+    if (bin) out.push({ name: logical, bin });
+  }
+  try {
+    const r = await fetch(`${OLLAMA}/api/tags`);
+    if (r.ok) out.push({ name: 'ollama', bin: OLLAMA });
+  } catch {
+    /* noop */
+  }
+  return out;
+}
+
 /* --------------------------------------------------------------- backends */
 
 const stripFence = (t) =>
@@ -103,16 +157,17 @@ const stripFence = (t) =>
 const backends = {
   async claude({ system, user }) {
     // Claude Code CLI o che do headless
-    return run('claude', ['-p', '--output-format', 'text', '--append-system-prompt', system], user);
+    return runBin('claude', ['-p', '--output-format', 'text', '--append-system-prompt', system], user);
   },
 
   async gemini({ system, user }) {
-    return run('gemini', ['-p', `${system}\n\n---\n\n${user}`]);
+    return runBin('gemini', ['-p', `${system}\n\n---\n\n${user}`]);
   },
 
-  async q({ system, user }) {
-    // Amazon Q Developer CLI (nen tang cua Kiro)
-    return run('q', ['chat', '--no-interactive', '--trust-all-tools'], `${system}\n\n---\n\n${user}`);
+  async kiro({ system, user }) {
+    // Kiro CLI (`kiro`) — truoc day la Amazon Q Developer CLI (`q`).
+    // Ca hai deu nhan cung bo co: chat --no-interactive --trust-all-tools
+    return runBin('kiro', ['chat', '--no-interactive', '--trust-all-tools'], `${system}\n\n---\n\n${user}`);
   },
 
   async ollama({ system, user, model }) {
@@ -144,21 +199,25 @@ const backends = {
   },
 };
 
-const ALIASES = { kiro: 'q', 'amazon-q': 'q', 'claude-code': 'claude', default: null };
+const ALIASES = {
+  q: 'kiro',
+  'amazon-q': 'kiro',
+  amazonq: 'kiro',
+  'kiro-cli': 'kiro',
+  'claude-code': 'claude',
+  default: null,
+};
 
 async function pickBackend(model) {
   const key = String(model || 'default').toLowerCase();
   const name = ALIASES[key] !== undefined ? ALIASES[key] : key.split(':')[0];
   if (name && backends[name]) return name;
-  // tu do
-  for (const c of ['claude', 'gemini', 'q']) if (await which(c)) return c;
-  try {
-    const r = await fetch(`${OLLAMA}/api/tags`);
-    if (r.ok) return 'ollama';
-  } catch {
-    /* noop */
-  }
-  throw new Error('Khong tim thay backend nao (claude / gemini / q / ollama). Cai 1 trong so do hoac dat AF_CMD.');
+  // tu do: uu tien CLI co san, cuoi cung moi den Ollama
+  const found = await availableBackends();
+  if (found.length) return found[0].name;
+  throw new Error(
+    'Khong tim thay backend nao (claude / gemini / kiro / q / ollama). Cai 1 trong so do hoac dat AF_CMD.'
+  );
 }
 
 /* ----------------------------------------------------------------- server */
@@ -171,15 +230,14 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === '/health') {
-    const found = [];
-    for (const c of ['claude', 'gemini', 'q']) if (await which(c)) found.push(c);
-    try {
-      const r = await fetch(`${OLLAMA}/api/tags`);
-      if (r.ok) found.push('ollama');
-    } catch {
-      /* noop */
-    }
-    return json(res, 200, { ok: true, version: '0.1.0', backends: found });
+    const found = await availableBackends();
+    return json(res, 200, {
+      ok: true,
+      version: '0.2.0',
+      backends: found.map((b) => b.name),
+      // ten binary that su, de UI hien "kiro (q)" khi may con ban Amazon Q cu
+      bins: Object.fromEntries(found.map((b) => [b.name, b.bin])),
+    });
   }
 
   if (url.pathname === '/v1/complete' && req.method === 'POST') {
@@ -212,10 +270,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, async () => {
-  const found = [];
-  for (const c of ['claude', 'gemini', 'q']) if (await which(c)) found.push(c);
-  console.log(`AI Autofill Bridge dang chay tai http://${HOST}:${PORT}`);
-  console.log(`  Backend tim thay: ${found.join(', ') || '(khong co CLI nao — se thu Ollama)'}`);
+  const found = await availableBackends();
+  const label = found.map((b) => (b.name === b.bin ? b.name : `${b.name} (binary: ${b.bin})`)).join(', ');
+  console.log(`Autofill Studio Bridge dang chay tai http://${HOST}:${PORT}`);
+  console.log(`  Backend tim thay: ${label || '(khong co CLI nao — se thu Ollama)'}`);
   if (TOKEN) console.log('  Token: da bat');
   console.log('  Trong extension: Cai dat -> Provider = Local Bridge');
 });

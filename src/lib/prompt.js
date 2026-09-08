@@ -1,4 +1,4 @@
-/* AI Autofill Studio — lib/prompt.js
+/* Autofill Studio — lib/prompt.js
  * Bien danh sach field + ngu canh trang thanh prompt, va dinh nghia schema
  * JSON ma model phai tra ve.
  */

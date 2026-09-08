@@ -1,4 +1,7 @@
-/* AI Autofill Studio — sidepanel/panel.js */
+/* Autofill Studio — sidepanel/panel.js
+ * Panel duoc dung nhu mot dong hoat dong cua agent: moi buoc (quet -> hoi AI ->
+ * dien) la mot muc tren duong ray, co trang thai va thoi gian rieng.
+ */
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
@@ -10,43 +13,139 @@ const el = (tag, cls, text) => {
 
 const state = {
   tabId: null,
+  url: '',
   settings: null,
   fields: [],
   steps: [],
   skipped: [],
   results: [],
+  snapshots: [],
+  allSnapshots: [],
+  planSource: 'ai',
   filter: '',
+  busy: false,
 };
 
 const send = (msg) => chrome.runtime.sendMessage({ ...msg, tabId: msg.tabId ?? state.tabId });
 
-/* ------------------------------------------------------------------- log */
+function setBusy(on) {
+  state.busy = on;
+  document.body.classList.toggle('busy', on);
+  $('#btn-run').disabled = on;
+  $('#btn-scan').disabled = on;
+}
 
-function log(line, kind = '') {
-  const t = new Date().toLocaleTimeString('vi-VN', { hour12: false });
-  $('#log').textContent += `[${t}] ${kind ? kind.toUpperCase() + ' ' : ''}${line}\n`;
-  $('#log').scrollTop = $('#log').scrollHeight;
+/* ------------------------------------------------------------------ stream */
+
+let openEv = null;
+
+function finishEv(kind = 'ok', mark = '✓') {
+  if (!openEv) return;
+  openEv.classList.remove('run');
+  openEv.classList.add(kind);
+  const dot = openEv.querySelector('.dot');
+  if (dot) dot.textContent = mark;
+  openEv = null;
+}
+
+/**
+ * Them mot buoc vao dong hoat dong.
+ * kind: 'run' (dang chay, se tu dong dong khi buoc sau xuat hien) | 'ok' | 'err' | 'idle'
+ */
+function ev(text, { kind = 'run', detail = '', ms = null, card = null } = {}) {
+  finishEv();
+  $('#run-empty').classList.add('hide');
+
+  const node = el('div', `ev ${kind}`);
+  const dot = el('span', 'dot', kind === 'ok' ? '✓' : kind === 'err' ? '✕' : '');
+  const head = el('div', 'head');
+  head.append(el('span', 'txt', text));
+  if (ms != null) head.append(el('span', 'ms', `${ms}ms`));
+  node.append(dot, head);
+  if (detail) node.append(el('div', 'detail', detail));
+  if (card) node.append(card);
+
+  $('#stream').append(node);
+  // chi cuon khi nguoi dung dang thuc su nhin tab Hoat dong
+  if (!$('#view-run').classList.contains('hide')) node.scrollIntoView({ block: 'nearest' });
+  if (kind === 'run') openEv = node;
+  return node;
+}
+
+/**
+ * Hop nhap lieu nho ngay trong panel. Dung thay window.prompt vi prompt chan
+ * toan bo luong su kien va trong rat lac long giua giao dien nay.
+ */
+function askInline(label, value = '') {
+  return new Promise((resolve) => {
+    document.querySelectorAll('.ask').forEach((n) => n.remove());
+    const wrap = el('div', 'ask');
+    const box = el('div', 'ask-box');
+    box.append(el('div', 'ask-label', label));
+    const input = el('input', 'ask-input');
+    input.value = value;
+    const row = el('div', 'ask-row');
+    const done = (v) => {
+      wrap.remove();
+      resolve(v);
+    };
+    row.append(
+      btn('Huy', () => done(null), 'btn'),
+      btn('Xong', () => done(input.value), 'btn primary grow')
+    );
+    box.append(input, row);
+    wrap.append(box);
+    wrap.onclick = (e) => {
+      if (e.target === wrap) done(null);
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') done(input.value);
+      if (e.key === 'Escape') done(null);
+    };
+    document.body.append(wrap);
+    input.focus();
+    input.select();
+  });
 }
 
 let toastTimer;
 function toast(msg, kind = 'info') {
   document.querySelectorAll('.toast').forEach((n) => n.remove());
   const t = el('div', `toast ${kind}`, msg);
-  document.body.appendChild(t);
+  document.body.append(t);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.remove(), 3200);
+  toastTimer = setTimeout(() => t.remove(), 3400);
 }
 
-/* ------------------------------------------------------------------ init */
+/* -------------------------------------------------------------------- init */
 
 async function init() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  state.tabId = tab?.id ?? null;
+  await pickTab();
   state.settings = await send({ type: 'AF_GET_SETTINGS' });
   $('#prompt').value = state.settings.lastPrompt || '';
+  autoGrow();
   renderProvider();
-  renderCdp();
-  log(`San sang. Tab #${state.tabId} — ${tab?.url?.slice(0, 60) || ''}`);
+  renderMode();
+  await refreshMemory();
+}
+
+async function pickTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  state.tabId = tab?.id ?? null;
+  state.url = tab?.url || '';
+  renderScreen(tab);
+}
+
+function renderScreen(tab) {
+  let label = '—';
+  try {
+    const u = new URL(tab?.url || state.url);
+    label = u.host + (u.pathname === '/' ? '' : u.pathname);
+  } catch {
+    label = tab?.title || '—';
+  }
+  $('#screen').textContent = label;
+  $('#screen').title = tab?.url || '';
 }
 
 function renderProvider() {
@@ -58,24 +157,26 @@ function renderProvider() {
     bridge: 'Local Bridge',
   };
   const p = state.settings.provider;
-  $('#provider').textContent = map[p] || p;
   const cfg = state.settings[p] || {};
   const needsKey = ['gemini', 'anthropic', 'openai'].includes(p);
   const missing = needsKey && !cfg.apiKey && cfg.auth !== 'oauth';
-  $('#provider').classList.toggle('muted', missing);
-  $('#provider').title = missing ? 'Chua cau hinh API key — mo Cai dat' : `${map[p]} · ${cfg.model || ''}`;
+
+  const chip = $('#provider');
+  chip.textContent = missing ? `${map[p] || p} · chua co key` : map[p] || p;
+  chip.classList.toggle('warn', missing);
+  chip.title = missing ? 'Chua cau hinh API key — mo Cai dat' : `${map[p] || p} · ${cfg.model || ''}`;
 }
 
-function renderCdp() {
+function renderMode() {
   const on = !!state.settings.cdpMode;
-  $('#btn-cdp').textContent = on ? 'CDP' : 'DOM';
-  $('#btn-cdp').classList.toggle('on', on);
-  $('#btn-cdp').title = on
-    ? 'Che do CDP: event trusted qua chrome.debugger (Chrome se hien thanh vang)'
-    : 'Che do DOM: nhanh, khong thanh vang. Bam de doi sang CDP.';
+  $('#btn-mode').textContent = on ? 'CDP' : 'DOM';
+  $('#btn-mode').classList.toggle('on', on);
+  $('#btn-mode').title = on
+    ? 'CDP: gui event trusted qua chrome.debugger (Chrome hien thanh vang). Bam de tat.'
+    : 'DOM: nhanh, khong thanh vang. Bam de doi sang CDP.';
 }
 
-/* ---------------------------------------------------------------- fields */
+/* ------------------------------------------------------------------ fields */
 
 const kindLabel = {
   text: 'text', textarea: 'textarea', number: 'number', date: 'date', editor: 'rich-text',
@@ -86,21 +187,20 @@ const kindLabel = {
 
 function renderFields() {
   const box = $('#fields');
-  box.innerHTML = '';
+  box.textContent = '';
   const q = state.filter.toLowerCase();
   const list = state.fields.filter(
     (f) => !q || `${f.label} ${f.name} ${f.kind} ${f.section}`.toLowerCase().includes(q)
   );
   $('#c-fields').textContent = state.fields.length;
-  $('#fields-empty').style.display = list.length ? 'none' : '';
+  $('#fields-empty').classList.toggle('hide', list.length > 0);
 
   let lastSection = null;
   for (const f of list) {
     if (f.section && f.section !== lastSection) {
       lastSection = f.section;
-      const h = el('div', 'lbl', f.section);
-      h.style.marginTop = '6px';
-      box.appendChild(h);
+      const h = el('div', 'lbl mt', f.section);
+      box.append(h);
     }
     const item = el('div', 'item' + (f.disabled ? ' skip' : ''));
     const top = el('div', 'top');
@@ -121,40 +221,72 @@ function renderFields() {
     item.append(el('div', 'sel', f.selector));
 
     const acts = el('div', 'acts');
-    const bGo = el('button', '', 'Xem');
-    bGo.onclick = () => send({ type: 'AF_SCROLL_TO', frameId: f.frameId, id: f.id });
-    const bFill = el('button', '', 'Dien thu');
-    bFill.onclick = async () => {
-      const v = prompt(`Gia tri cho "${f.label || f.name}":`, '');
-      if (v == null) return;
-      const r = await send({
-        type: 'AF_STEP_ONE',
-        frameId: f.frameId,
-        step: { afId: f.id, action: 'fill', kind: f.kind, value: v },
-      });
-      log(`Dien thu "${f.label}": ${r?.result?.ok ? 'OK' : 'that bai — ' + (r?.result?.error || '')}`);
-    };
-    acts.append(bGo, bFill);
+    acts.append(
+      btn('Xem', () => send({ type: 'AF_SCROLL_TO', frameId: f.frameId, id: f.id })),
+      btn('Dien thu', async () => {
+        const v = await askInline(`Gia tri cho "${f.label || f.name}"`);
+        if (v == null) return;
+        const r = await send({
+          type: 'AF_STEP_ONE',
+          frameId: f.frameId,
+          step: { afId: f.id, action: 'fill', kind: f.kind, value: v },
+        });
+        const ok = r?.result?.ok;
+        toast(ok ? `Da dien "${f.label || f.name}"` : `That bai: ${r?.result?.error || ''}`, ok ? 'ok' : 'err');
+      })
+    );
     item.append(acts);
-    box.appendChild(item);
+    box.append(item);
   }
 }
 
-/* ------------------------------------------------------------------ plan */
+const btn = (label, onClick, cls = 'btn tiny') => {
+  const b = el('button', cls, label);
+  b.onclick = onClick;
+  return b;
+};
+
+/* -------------------------------------------------------------------- plan */
 
 function renderPlan() {
   const box = $('#plan');
-  box.innerHTML = '';
+  box.textContent = '';
   $('#c-plan').textContent = state.steps.length;
-  $('#plan-empty').style.display = state.steps.length ? 'none' : '';
-  $('#plan-actions').style.display = state.steps.length ? '' : 'none';
+  $('#plan-empty').classList.toggle('hide', state.steps.length > 0);
+
+  const head = $('#plan-head');
+  head.textContent = '';
+  head.classList.toggle('hide', !state.steps.length);
+  if (state.steps.length) {
+    const done = state.results.length;
+    const ok = state.results.filter((r) => r.ok).length;
+    head.append(
+      el(
+        'div',
+        '',
+        state.planSource === 'memory'
+          ? `${state.steps.length} buoc lay tu bo nho man hinh (khong goi AI).`
+          : `${state.steps.length} buoc do AI de xuat. Sua truc tiep truoc khi ap dung neu can.`
+      )
+    );
+    if (done) head.append(el('div', 'meta', `Da chay: ${ok}/${done} thanh cong.`));
+    const row = el('div', 'row');
+    row.append(
+      btn('Ap dung ke hoach', applyPlan, 'btn primary grow'),
+      btn('Copy JSON', async () => {
+        await navigator.clipboard.writeText(JSON.stringify(state.steps, null, 2));
+        toast('Da copy JSON', 'ok');
+      })
+    );
+    head.append(row);
+  }
 
   state.steps.forEach((s, i) => {
     const res = state.results.find((r) => r.step === s || (r.step && r.step.afId === s.afId));
     const item = el('div', 'item' + (res ? (res.ok ? ' ok' : ' err') : ''));
     const top = el('div', 'top');
     top.append(el('span', 'kind', s.action), el('span', 'name', s.label || s.afId));
-    if (res) top.append(el('span', `status ${res.ok ? 'ok' : 'err'}`, res.ok ? '✓' : '✕'));
+    if (res) top.append(el('span', `state ${res.ok ? 'ok' : 'err'}`, res.ok ? '✓' : '✕'));
     item.append(top);
 
     const inp = el('input', 'val');
@@ -177,119 +309,310 @@ function renderPlan() {
     if (res && !res.ok) item.append(el('div', 'meta', 'Loi: ' + (res.error || '')));
 
     const acts = el('div', 'acts');
-    const bGo = el('button', '', 'Xem');
-    bGo.onclick = () => send({ type: 'AF_SCROLL_TO', frameId: s.frameId, id: s.afId });
-    const bRun = el('button', '', 'Chay buoc nay');
-    bRun.onclick = async () => {
-      const r = await send({ type: 'AF_STEP_ONE', frameId: s.frameId, step: s });
-      const ok = r?.result?.ok;
-      log(`Buoc ${i + 1} "${s.label}": ${ok ? 'OK' : 'that bai — ' + (r?.result?.error || '')}`, ok ? '' : 'err');
-      item.classList.toggle('ok', !!ok);
-      item.classList.toggle('err', !ok);
-    };
-    const bDel = el('button', '', 'Bo');
-    bDel.onclick = () => {
-      state.steps.splice(i, 1);
-      renderPlan();
-    };
-    acts.append(bGo, bRun, bDel);
+    acts.append(
+      btn('Xem', () => send({ type: 'AF_SCROLL_TO', frameId: s.frameId, id: s.afId })),
+      btn('Chay buoc nay', async () => {
+        const r = await send({ type: 'AF_STEP_ONE', frameId: s.frameId, step: s });
+        const ok = r?.result?.ok;
+        item.classList.toggle('ok', !!ok);
+        item.classList.toggle('err', !ok);
+        if (!ok) toast(r?.result?.error || 'That bai', 'err');
+      }),
+      btn('Bo', () => {
+        state.steps.splice(i, 1);
+        renderPlan();
+      }, 'btn tiny danger')
+    );
     item.append(acts);
-    box.appendChild(item);
+    box.append(item);
   });
 
   if (state.skipped.length) {
-    const h = el('div', 'lbl', `Bo qua (${state.skipped.length})`);
-    h.style.marginTop = '10px';
-    box.appendChild(h);
+    box.append(el('div', 'lbl mt', `Bo qua (${state.skipped.length})`));
     for (const s of state.skipped) {
       const f = state.fields.find((x) => (x.gid || x.id) === s.id);
       const it = el('div', 'item skip');
       it.append(el('div', 'name', f?.label || s.id), el('div', 'meta', s.reason));
-      box.appendChild(it);
+      box.append(it);
     }
   }
 }
 
-/* ----------------------------------------------------------------- events */
-
-chrome.runtime.onMessage.addListener((m) => {
-  if (m?.type !== 'AF_EVENT') return;
-  if (m.phase === 'scan') log(m.message);
-  if (m.phase === 'scanned') {
-    state.fields = m.fields || [];
-    renderFields();
-    log(`Tim thay ${m.count} field tren ${m.frames} frame.`);
-  }
-  if (m.phase === 'generate') log(m.message);
-  if (m.phase === 'planned') {
-    state.steps = m.steps || [];
-    state.skipped = m.skipped || [];
-    state.results = [];
-    renderPlan();
-    log(`AI tra ve ${state.steps.length} buoc trong ${m.ms}ms.` + (m.usage ? ` Token: ${JSON.stringify(m.usage)}` : ''));
-  }
-  if (m.phase === 'run') log(m.message);
-  if (m.phase === 'done') {
-    state.results = m.results || [];
-    renderPlan();
-    log(`Hoan tat: ${m.ok}/${m.total} field thanh cong.`, m.ok === m.total ? '' : 'warn');
-    for (const r of state.results.filter((x) => !x.ok)) log(`  ✕ ${r.step?.label || ''}: ${r.error || ''}`);
-    toast(`Da dien ${m.ok}/${m.total} field`, m.ok === m.total ? 'ok' : 'err');
-  }
-});
-
-/* ------------------------------------------------------------------- UI */
-
-$('#btn-scan').onclick = async () => {
-  $('#btn-scan').disabled = true;
-  try {
-    const r = await send({ type: 'AF_SCAN_TAB', deep: state.settings.deepScan });
-    state.fields = r.fields || [];
-    renderFields();
-    log(`Quet xong: ${state.fields.length} field / ${r.frames} frame.`);
-    toast(`${state.fields.length} field`, 'ok');
-  } catch (e) {
-    log('Quet loi: ' + e.message, 'err');
-    toast('Quet loi: ' + e.message, 'err');
-  } finally {
-    $('#btn-scan').disabled = false;
-  }
-};
-
-$('#btn-run').onclick = async () => {
-  const request = $('#prompt').value.trim();
-  $('#btn-run').disabled = true;
-  $('#btn-run').textContent = 'Dang chay...';
-  try {
-    await send({ type: 'AF_AUTOFILL', request });
-  } catch (e) {
-    log('Loi: ' + e.message, 'err');
-    toast(e.message, 'err');
-  } finally {
-    $('#btn-run').disabled = false;
-    $('#btn-run').textContent = 'Quet & dien tu dong';
-  }
-};
-
-$('#btn-apply').onclick = async () => {
-  $('#btn-apply').disabled = true;
+async function applyPlan() {
+  setBusy(true);
+  ev(`Ap dung ${state.steps.length} buoc...`);
   try {
     const results = await send({ type: 'AF_RUN_PLAN', steps: state.steps });
     state.results = Array.isArray(results) ? results : [];
     renderPlan();
     const ok = state.results.filter((r) => r.ok).length;
-    log(`Ap dung: ${ok}/${state.results.length} thanh cong.`);
-    toast(`${ok}/${state.results.length} field`, ok === state.results.length ? 'ok' : 'err');
+    finishEv(ok === state.results.length ? 'ok' : 'err');
+    ev(`Xong: ${ok}/${state.results.length} o thanh cong.`, { kind: ok === state.results.length ? 'ok' : 'err' });
+    toast(`${ok}/${state.results.length} o`, ok === state.results.length ? 'ok' : 'err');
+  } catch (e) {
+    finishEv('err', '✕');
+    ev('Loi khi ap dung: ' + e.message, { kind: 'err' });
+    toast(e.message, 'err');
+  } finally {
+    setBusy(false);
+  }
+}
+
+/* ------------------------------------------------------------------ memory */
+
+async function refreshMemory() {
+  const r = await send({ type: 'AF_MEM_FOR_TAB' });
+  state.snapshots = r?.snapshots || [];
+  state.allSnapshots = (await send({ type: 'AF_MEM_LIST' })) || [];
+  $('#c-mem').textContent = state.snapshots.length || state.allSnapshots.length;
+  renderRecall();
+  renderMemory();
+}
+
+function renderRecall() {
+  const box = $('#recall');
+  box.textContent = '';
+  const snap = state.snapshots[0];
+  if (!snap || !state.settings?.autoSuggestSnapshot) {
+    box.classList.add('hide');
+    return;
+  }
+  box.classList.remove('hide');
+  box.append(
+    el('div', 'rt', 'Man hinh nay da tung duoc dien'),
+    el('div', 'rs', `"${snap.name}" · ${snap.entries.length} o · luu ${when(snap.usedAt || snap.at)}`)
+  );
+  const row = el('div', 'row');
+  row.append(
+    btn('Dien ngay tu bo nho', () => applySnapshot(snap.id), 'btn primary grow'),
+    btn('Xem', () => switchView('memory'))
+  );
+  box.append(row);
+}
+
+function when(ts) {
+  if (!ts) return '';
+  const d = (Date.now() - ts) / 1000;
+  if (d < 60) return 'vua xong';
+  if (d < 3600) return `${Math.floor(d / 60)} phut truoc`;
+  if (d < 86400) return `${Math.floor(d / 3600)} gio truoc`;
+  return `${Math.floor(d / 86400)} ngay truoc`;
+}
+
+function snapshotCard(s, mine) {
+  const item = el('div', 'item');
+  const top = el('div', 'top');
+  top.append(el('span', 'kind', mine ? 'man hinh nay' : 'khac'), el('span', 'name', s.name));
+  item.append(top);
+  item.append(
+    el('div', 'meta', `${s.entries.length} o · ${when(s.usedAt || s.at)}${s.uses ? ` · dung ${s.uses} lan` : ''}`)
+  );
+  if (!mine) item.append(el('div', 'sel', s.key));
+  const preview = s.entries.slice(0, 3).map((e) => `${e.label}: ${e.value}`.slice(0, 44)).join(' · ');
+  if (preview) item.append(el('div', 'meta', preview + (s.entries.length > 3 ? ' …' : '')));
+
+  const acts = el('div', 'acts');
+  acts.append(
+    btn('Dien', () => applySnapshot(s.id), 'btn tiny primary'),
+    btn('Xem truoc', () => previewSnapshot(s.id)),
+    btn('Doi ten', async () => {
+      const name = await askInline('Ten moi cho ban luu', s.name);
+      if (name == null) return;
+      await send({ type: 'AF_MEM_RENAME', id: s.id, name });
+      await refreshMemory();
+    }),
+    btn('Xoa', async () => {
+      await send({ type: 'AF_MEM_DELETE', id: s.id });
+      toast('Da xoa ban luu', 'ok');
+      await refreshMemory();
+    }, 'btn tiny danger')
+  );
+  item.append(acts);
+  return item;
+}
+
+function renderMemory() {
+  const mine = $('#mem-this');
+  const other = $('#mem-other');
+  mine.textContent = '';
+  other.textContent = '';
+
+  for (const s of state.snapshots) mine.append(snapshotCard(s, true));
+  const otherList = state.allSnapshots.filter((s) => !state.snapshots.some((x) => x.id === s.id));
+  for (const s of otherList.slice(0, 40)) other.append(snapshotCard(s, false));
+
+  $('#mem-other-lbl').classList.toggle('hide', !otherList.length);
+  $('#mem-empty').classList.toggle('hide', state.allSnapshots.length > 0);
+}
+
+async function applySnapshot(id) {
+  switchView('run');
+  setBusy(true);
+  ev('Dang doi chieu bo nho voi form tren trang...');
+  try {
+    const r = await send({ type: 'AF_MEM_APPLY', id });
+    if (r?.error) throw new Error(r.error);
+    await refreshMemory();
+    if (!r.matched) toast('Khong ghep duoc o nao — form co the da doi', 'err');
+  } catch (e) {
+    finishEv('err', '✕');
+    ev('Loi: ' + e.message, { kind: 'err' });
+    toast(e.message, 'err');
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function previewSnapshot(id) {
+  setBusy(true);
+  try {
+    const r = await send({ type: 'AF_MEM_PLAN', id });
+    if (r?.error) throw new Error(r.error);
+    state.fields = r.fields || [];
+    state.steps = r.steps || [];
+    state.skipped = r.missing || [];
+    state.results = [];
+    state.planSource = 'memory';
+    renderFields();
+    renderPlan();
+    switchView('plan');
+    toast(`Ghep duoc ${r.matched} o`, r.matched ? 'ok' : 'err');
   } catch (e) {
     toast(e.message, 'err');
   } finally {
-    $('#btn-apply').disabled = false;
+    setBusy(false);
+  }
+}
+
+/* ------------------------------------------------------- su kien tu background */
+
+chrome.runtime.onMessage.addListener((m) => {
+  if (m?.type !== 'AF_EVENT') return;
+
+  if (m.phase === 'scan') ev(m.message || 'Dang quet...');
+
+  if (m.phase === 'scanned') {
+    state.fields = m.fields || [];
+    renderFields();
+    finishEv();
+    ev(`Tim thay ${m.count} o tren ${m.frames} frame`, { kind: 'ok' });
+  }
+
+  if (m.phase === 'generate') ev(m.message || 'Dang hoi AI...');
+
+  if (m.phase === 'planned') {
+    state.steps = m.steps || [];
+    state.skipped = m.skipped || [];
+    state.results = [];
+    state.planSource = m.source === 'memory' ? 'memory' : 'ai';
+    renderPlan();
+    finishEv();
+
+    const card = el('div', 'card');
+    card.append(
+      el(
+        'div',
+        '',
+        state.planSource === 'memory'
+          ? `Ghep tu ban luu "${m.snapshot?.name || ''}"`
+          : `AI de xuat gia tri cho ${state.steps.length} o`
+      )
+    );
+    if (state.skipped.length) card.append(el('div', 'meta', `Bo qua ${state.skipped.length} o`));
+    const row = el('div', 'row');
+    row.append(btn('Xem ke hoach', () => switchView('plan')));
+    card.append(row);
+
+    ev(
+      state.planSource === 'memory'
+        ? `Lay ${state.steps.length} gia tri tu bo nho`
+        : `AI tra ve ${state.steps.length} buoc`,
+      { kind: 'ok', ms: m.ms || null, card }
+    );
+  }
+
+  if (m.phase === 'run') ev(m.message || 'Dang dien...');
+
+  if (m.phase === 'done') {
+    state.results = m.results || [];
+    renderPlan();
+    finishEv();
+    const all = m.ok === m.total && m.total > 0;
+    const fails = state.results.filter((x) => !x.ok);
+    ev(`Dien xong ${m.ok}/${m.total} o`, {
+      kind: m.total === 0 ? 'err' : all ? 'ok' : 'err',
+      detail: fails.length
+        ? fails.slice(0, 6).map((r) => `✕ ${r.step?.label || ''} — ${r.error || ''}`).join('\n')
+        : '',
+    });
+    toast(`${m.ok}/${m.total} o`, all ? 'ok' : 'err');
+  }
+
+  if (m.phase === 'saved') {
+    ev(`Da ghi nho man hinh nay (${m.snapshot?.count || 0} o)`, { kind: 'ok' });
+    refreshMemory();
+  }
+});
+
+/* ---------------------------------------------------------------------- UI */
+
+function switchView(name) {
+  document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.view === name));
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('hide', v.id !== `view-${name}`));
+}
+document.querySelectorAll('.tabs button').forEach((b) => {
+  b.onclick = () => switchView(b.dataset.view);
+});
+
+function autoGrow() {
+  const t = $('#prompt');
+  t.style.height = 'auto';
+  t.style.height = Math.min(t.scrollHeight, 132) + 'px';
+}
+$('#prompt').addEventListener('input', autoGrow);
+$('#prompt').addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    $('#btn-run').click();
+  }
+});
+
+$('#btn-run').onclick = async () => {
+  const request = $('#prompt').value.trim();
+  switchView('run');
+  setBusy(true);
+  ev(request ? `Yeu cau: ${request}` : 'Dien toan bo form bang du lieu hop ly', { kind: 'idle' });
+  try {
+    const r = await send({ type: 'AF_AUTOFILL', request });
+    if (r?.error) throw new Error(r.error);
+  } catch (e) {
+    finishEv('err', '✕');
+    ev('Loi: ' + e.message, { kind: 'err' });
+    toast(e.message, 'err');
+  } finally {
+    setBusy(false);
   }
 };
 
-$('#btn-copy-plan').onclick = async () => {
-  await navigator.clipboard.writeText(JSON.stringify(state.steps, null, 2));
-  toast('Da copy JSON ke hoach', 'ok');
+$('#btn-scan').onclick = async () => {
+  switchView('fields');
+  setBusy(true);
+  ev('Dang quet trang...');
+  try {
+    const r = await send({ type: 'AF_SCAN_TAB', deep: state.settings.deepScan });
+    if (r?.error) throw new Error(r.error);
+    state.fields = r.fields || [];
+    renderFields();
+    finishEv();
+    ev(`Tim thay ${state.fields.length} o tren ${r.frames} frame`, { kind: 'ok' });
+    toast(`${state.fields.length} o nhap lieu`, 'ok');
+  } catch (e) {
+    finishEv('err', '✕');
+    ev('Quet loi: ' + e.message, { kind: 'err' });
+    toast(e.message, 'err');
+  } finally {
+    setBusy(false);
+  }
 };
 
 $('#btn-highlight').onclick = async () => {
@@ -302,7 +625,10 @@ $('#btn-highlight').onclick = async () => {
   toast('Da danh dau field tren trang', 'info');
 };
 
-$('#btn-clear').onclick = () => send({ type: 'AF_CLEAR_TAB' });
+$('#btn-clear').onclick = () => {
+  send({ type: 'AF_CLEAR_TAB' });
+  $('#picked').classList.add('hide');
+};
 
 $('#btn-pick').onclick = async () => {
   toast('Di chuot len trang roi click element muon chon', 'info');
@@ -314,47 +640,75 @@ $('#btn-pick').onclick = async () => {
     return;
   }
   box.classList.remove('hide');
-  box.innerHTML = `<b>${p.tag}${p.type ? '[' + p.type + ']' : ''}</b> ${p.label ? '— ' + p.label : ''}<br>
-    Locator goi y: <code>${JSON.stringify(p.suggestedLocator)}</code><br>
-    <code>${p.selector}</code>`;
-  log(`Da chon: ${p.tag} — ${p.label} | ${JSON.stringify(p.suggestedLocator)}`);
+  box.textContent = '';
+  box.append(
+    el('div', '', `${p.tag}${p.type ? `[${p.type}]` : ''}${p.label ? ` — ${p.label}` : ''}`),
+    Object.assign(el('code'), { textContent: JSON.stringify(p.suggestedLocator) }),
+    el('div', 'sel', p.selector)
+  );
+  ev(`Da chon element: ${p.tag} — ${p.label || ''}`, { kind: 'ok', detail: p.selector });
 };
 
-$('#btn-cdp').onclick = async () => {
+$('#btn-mode').onclick = async () => {
   const next = !state.settings.cdpMode;
   state.settings = await send({ type: 'AF_SET_SETTINGS', patch: { cdpMode: next } });
-  renderCdp();
+  renderMode();
   if (next) {
     const r = await send({ type: 'AF_CDP_ATTACH' });
-    log(r?.ok ? 'Da gan chrome.debugger (che do CDP).' : 'Khong gan duoc debugger: ' + (r?.error || ''), r?.ok ? '' : 'err');
+    ev(r?.ok ? 'Da gan chrome.debugger — che do CDP' : 'Khong gan duoc debugger: ' + (r?.error || ''), {
+      kind: r?.ok ? 'ok' : 'err',
+    });
   } else {
     await send({ type: 'AF_CDP_DETACH' });
-    log('Da go debugger, quay ve che do DOM.');
+    ev('Da go debugger — quay ve che do DOM', { kind: 'ok' });
   }
 };
 
+$('#btn-mem-save').onclick = async () => {
+  const name = await askInline('Ten cho ban luu nay', '');
+  if (name == null) return;
+  setBusy(true);
+  try {
+    const r = await send({ type: 'AF_MEM_SAVE', name });
+    if (r?.error) throw new Error(r.error);
+    toast(`Da luu "${r.name}" — ${r.entries.length} o`, 'ok');
+    await refreshMemory();
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    setBusy(false);
+  }
+};
+
+$('#btn-mem-refresh').onclick = refreshMemory;
 $('#btn-settings').onclick = () => chrome.runtime.openOptionsPage();
-$('#btn-clearlog').onclick = () => ($('#log').textContent = '');
 $('#q').oninput = (e) => {
   state.filter = e.target.value;
   renderFields();
 };
 
-document.querySelectorAll('.tabs button').forEach((b) => {
-  b.onclick = () => {
-    document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('on'));
-    b.classList.add('on');
-    document.querySelectorAll('.panel').forEach((p) => p.classList.add('hide'));
-    $(`#tab-${b.dataset.tab}`).classList.remove('hide');
-  };
+/* Panel song lau hon tab: doi tab thi phai doc lai ngu canh */
+chrome.tabs.onActivated.addListener(async () => {
+  await pickTab();
+  state.fields = [];
+  state.steps = [];
+  state.results = [];
+  renderFields();
+  renderPlan();
+  await refreshMemory();
 });
 
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) send({ type: 'AF_GET_SETTINGS' }).then((s) => {
-    state.settings = s;
-    renderProvider();
-    renderCdp();
-  });
+chrome.tabs.onUpdated.addListener(async (tabId, info) => {
+  if (tabId !== state.tabId || info.status !== 'complete') return;
+  await pickTab();
+  await refreshMemory();
+});
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) return;
+  state.settings = await send({ type: 'AF_GET_SETTINGS' });
+  renderProvider();
+  renderMode();
 });
 
 init();

@@ -1,4 +1,4 @@
-/* AI Autofill Studio — content/20-scanner.js
+/* Autofill Studio — content/20-scanner.js
  * Quet toan bo field tren frame: input chuan, contenteditable, va cac widget
  * custom cua Angular Material / PrimeNG / Ant / MUI / headless UI.
  */
@@ -128,6 +128,37 @@
     return hint ? AF.norm(hint.textContent).slice(0, 160) : '';
   };
 
+  /* --------------------------------------------------- gia tri dang hien thi */
+
+  /**
+   * Voi dropdown custom (mat-select, p-dropdown, ng-select...) thi el.value
+   * rong; gia tri that nam o phan text cua trigger. Doc no de con luu lai
+   * duoc vao bo nho man hinh.
+   */
+  const triggerText = (el) => {
+    const sel = [
+      '.mat-mdc-select-value-text',
+      '.mat-select-value-text',
+      '.ng-value-label',
+      '.p-dropdown-label',
+      '.p-multiselect-label',
+      '.ant-select-selection-item',
+      '.ant-select-selection-item-content',
+      '[class*="select"][class*="value"]',
+    ].join(',');
+    const node = el.querySelector ? el.querySelector(sel) : null;
+    let t = node ? AF.norm(node.textContent) : '';
+    if (!t && el.querySelector) {
+      const inner = el.querySelector('input');
+      if (inner && inner.value) t = AF.norm(inner.value);
+    }
+    if (!t) t = AF.norm(el.textContent).slice(0, 120);
+    // placeholder cua dropdown khong phai gia tri
+    const ph = AF.norm(el.getAttribute?.('placeholder') || '');
+    if (t && ph && AF.slug(t) === AF.slug(ph)) return '';
+    return t;
+  };
+
   /* ------------------------------------------------------------- options */
 
   const nativeOptions = (el) =>
@@ -203,9 +234,14 @@
     if (kind === 'checkbox' || kind === 'radio') currentValue = el.checked ? 'true' : 'false';
     else if (kind === 'checkbox-custom' || kind === 'toggle')
       currentValue = el.getAttribute('aria-checked') || (el.classList.contains('mat-mdc-checkbox-checked') ? 'true' : 'false');
-    else if (kind === 'editor') currentValue = AF.norm(el.textContent).slice(0, 200);
+    else if (kind === 'editor') currentValue = AF.norm(el.textContent).slice(0, 2000);
     else if (kind === 'file') currentValue = el.files && el.files.length ? `${el.files.length} file` : '';
-    else currentValue = AF.norm(el.value).slice(0, 200);
+    else if (kind === 'combobox' || kind === 'multiselect-custom') currentValue = triggerText(el).slice(0, 400);
+    else if (kind === 'select' || kind === 'multiselect') {
+      // Luu nhan cua option dang chon, de con so khop lai o lan sau
+      const chosen = [...(el.selectedOptions || [])].map((o) => AF.norm(o.textContent) || o.value);
+      currentValue = chosen.join(' | ').slice(0, 400);
+    } else currentValue = AF.norm(el.value).slice(0, kind === 'textarea' ? 2000 : 400);
 
     return {
       id: idFor(el),
@@ -274,6 +310,7 @@
       if (seen.has(key)) return false;
       seen.add(key);
       f.kind = 'radiogroup';
+      f.currentValue = '';
       // Nhan cua ca nhom la legend / aria-label cua group, khong phai nhan cua radio dau tien
       const el = AF.registry.get(f.id);
       const grp = el && AF.closestDeep(el, 'fieldset,[role="radiogroup"],mat-radio-group,.radio-group');
@@ -281,6 +318,10 @@
         const lg = grp.querySelector('legend,.mat-mdc-form-field-label') || null;
         const t = lg ? AF.norm(lg.textContent) : AF.norm(grp.getAttribute('aria-label') || '');
         if (t) f.label = t.slice(0, 140);
+        const on = grp.querySelector('input[type="radio"]:checked,[role="radio"][aria-checked="true"]');
+        if (on) f.currentValue = (AF.accessibleName(on) || AF.norm(on.textContent) || on.value || '').slice(0, 200);
+      } else if (el && el.checked) {
+        f.currentValue = (AF.accessibleName(el) || el.value || '').slice(0, 200);
       }
       return true;
     });

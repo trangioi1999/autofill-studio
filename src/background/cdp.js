@@ -1,4 +1,4 @@
-/* AI Autofill Studio — background/cdp.js
+/* Autofill Studio — background/cdp.js
  * Driver dung Chrome DevTools Protocol qua chrome.debugger.
  * Khac biet so voi che do DOM: event la "trusted" (isTrusted === true), giong
  * het nguoi that go phim / bam chuot. Dung khi trang co bao ve chat (kiem tra
