@@ -199,6 +199,8 @@ Ngưỡng ghép là 55. Nghĩa là bạn **đổi nhãn, đổi class, đảo th
 
 Tab **Bộ nhớ** trong side panel: lưu thủ công nhiều bản cho cùng một màn hình (ví dụ "Hồ sơ A" / "Hồ sơ B"), xem trước phần ghép được trước khi điền, đổi tên, xoá. Tắt tự lưu / tự gợi ý trong **Cài đặt**.
 
+**Mang sang máy khác.** `Xuất file` tải về một JSON, `Copy JSON` cho vào clipboard, `Nhập` dán ngược lại. Nhập là **gộp** chứ không đè: trùng `id` thì giữ bản `usedAt` mới hơn, nên nhập đi nhập lại cùng một file không nhân bản dữ liệu. Bản lưu hỏng trong file bị bỏ qua và báo số lượng, không làm hỏng kho đang có.
+
 ---
 
 ## Hai cách gửi event: DOM và CDP
@@ -264,7 +266,19 @@ Plan **không tự chạy mù** — bạn xem, sửa giá trị, bỏ bước kh
 
 ---
 
+## Chi phí
+
+Mỗi lần gọi model đều được cộng vào một chip ở thanh soạn: `phiên này: 6.3k tok · 2 lần gọi`. Rê chuột lên xem tách vào/ra.
+
+Đáng để ý ở chế độ Agent — **mỗi lượt là một lần gọi model**, nên chạy 12 lượt là 12 lần. Mỗi thẻ lượt hiện token cộng dồn của phiên agent, và dòng kết thúc tổng kết lại. Form một trang thì dùng "Điền form" cho rẻ; agent để dành cho việc nhiều bước.
+
+Mỗi provider báo token một kiểu khác nhau (`prompt_tokens` / `input_tokens` / `promptTokenCount`), `src/lib/usage.js` quy về một dạng. Anthropic có prompt caching thì token đọc từ cache cũng được tính vào phần vào. Chrome Built-in AI không báo gì nên chip sẽ không hiện.
+
+---
+
 ## Giao diện
+
+Icon là hình đầu một agent đeo mặt nạ, tự vẽ bằng SVG (`icons/icon.svg`) — bản 16/32px dùng biến thể rút gọn `icon-small.svg` vì ở cỡ đó tia sáng và cổ chỉ thành vệt mờ.
 
 Bảng màu mượn của Claude — nền giấy ấm `#faf9f5`, chữ than, điểm nhấn đất sét `#d97757`, wordmark serif. Tối là biến thể `#262624`, tự đổi theo hệ điều hành.
 
@@ -308,6 +322,7 @@ Thành thật: tôi kiểm thử trên macOS. Phần Windows là sửa theo đú
 
 ```
 manifest.json
+icons/              icon.svg + icon-small.svg (16/32) → PNG 16·32·48·128
 src/
   background/  service-worker.js  điều phối, đa frame
                cdp.js             driver chrome.debugger
@@ -320,6 +335,7 @@ src/
                99-main.js         message bridge
   providers/   gemini · anthropic · openai · chromeai · bridge
   lib/         agent.js    vòng lặp agent: tool, prompt, ref map
+               usage.js    quy token của 5 provider về một dạng
                prompt.js   system prompt + schema
                storage.js  cài đặt
                screen.js   nhận diện màn hình + chấm điểm khớp field
@@ -340,6 +356,10 @@ testpage/           form thử: Material select, multi-select, shadow DOM, ifram
 **Bridge** — `/health` và `/v1/complete` chạy thật, xác nhận `kiro` và `q` cùng trỏ về một backend và báo lỗi rõ khi chưa cài CLI. `AF_CMD` với đường dẫn có dấu cách và đối số trong dấu nháy tách đúng. Backend `claude` gửi system prompt qua stdin — argv chỉ còn `-p --output-format text`, không còn nội dung trang nào lọt vào dòng lệnh.
 
 **Agent** — chạy `service-worker.js` thật trong Node với `chrome.*` giả lập và một "model" HTTP trả JSON theo kịch bản, trên một trang 2 bước: đi hết 2 bước và kết thúc `done`; dừng đúng sau `click` nên hành động xếp sau bị bỏ; ref không tồn tại báo lỗi chứ không crash; lượt 2 nhận bản đồ mới + lịch sử lượt 1; không tự bấm "Gửi hồ sơ". Nút dừng trả `stopped` giữa chừng, trần lượt trả `maxsteps`.
+
+**Xuất/nhập bộ nhớ** — 10 assert: round-trip giữ đủ dữ liệu, nhập lại cùng file không nhân bản, bản mới hơn ghi đè bản cũ, bản lưu hỏng bị bỏ qua mà vẫn nhận bản tốt, JSON hỏng và thiếu mảng `snapshots` đều báo lỗi rõ ràng, chế độ thay thế xoá sạch trước khi nhập.
+
+**Đếm token** — 7 assert cho `usage.js` (OpenAI / Anthropic / Anthropic có cache / Gemini / không có usage / cộng dồn / định dạng), cộng 3 assert chạy qua vòng lặp agent thật: tổng cộng dồn đúng, đếm đúng số lần gọi, và mỗi lượt báo token của riêng nó.
 
 **Nguồn dữ liệu** — `source` từ model được giữ nguyên; model quên khai thì mặc định `invented`; schema bắt buộc có `source` và chỉ nhận 4 giá trị hợp lệ.
 

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Autofill Studio — dau agent deo mat na. Ve tay, khong dung anh cua ai. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e28c6a"/>
+      <stop offset="1" stop-color="#c55d3c"/>
+    </linearGradient>
+    <linearGradient id="visor" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b1c17"/>
+      <stop offset="1" stop-color="#4d2e23"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+
+  <!-- co -->
+  <rect x="222" y="286" width="68" height="86" rx="26" fill="#eddfd7"/>
+
+  <!-- vai, om sat co -->
+  <path d="M104 476c0-70 52-116 152-116s152 46 152 116z" fill="#faf3ee"/>
+
+  <!-- dau: rong ban, ham thu nhe -->
+  <path d="M256 88c-66 0-110 38-110 100 0 70 48 134 110 134s110-64 110-134c0-62-44-100-110-100z" fill="#faf3ee"/>
+
+  <!-- mat na -->
+  <path d="M150 176c30-16 64-23 106-23s76 7 106 23v38c0 21-16 35-39 35-27 0-43-14-55-30h-24c-12 16-28 30-55 30-23 0-39-14-39-35z" fill="url(#visor)"/>
+
+  <!-- khe mat -->
+  <ellipse cx="199" cy="205" rx="22" ry="14" fill="#ffdcca"/>
+  <ellipse cx="313" cy="205" rx="22" ry="14" fill="#ffdcca"/>
+
+  <!-- tia sang: trung voi glyph trong panel -->
+  <path d="M398 84l12 36 36 12-36 12-12 36-12-36-36-12 36-12z" fill="#faf3ee"/>
+</svg>

@@ -122,6 +122,79 @@ export async function clearSnapshots() {
   return { ok: true };
 }
 
+/* ------------------------------------------------------------- xuat / nhap */
+
+const FILE_KIND = 'autofill-studio/snapshots';
+
+/** Xuat toan bo bo nho ra JSON de mang sang may khac. */
+export async function exportSnapshots() {
+  const list = await readAll();
+  return {
+    ok: true,
+    count: list.length,
+    text: JSON.stringify({ kind: FILE_KIND, version: 1, at: Date.now(), snapshots: list }, null, 2),
+  };
+}
+
+const isSnapshot = (s) =>
+  s &&
+  typeof s === 'object' &&
+  typeof s.key === 'string' &&
+  Array.isArray(s.entries) &&
+  s.entries.every((e) => e && typeof e.value === 'string');
+
+/**
+ * Nhap tu JSON da xuat truoc do.
+ * Mac dinh la gop: trung id thi giu ban moi hon, khong dung thi them moi.
+ */
+export async function importSnapshots(text, { replace = false } = {}) {
+  let data;
+  try {
+    data = JSON.parse(String(text || ''));
+  } catch {
+    throw new Error('Khong doc duoc JSON — kiem tra lai noi dung dan vao.');
+  }
+  const incoming = Array.isArray(data) ? data : data?.snapshots;
+  if (!Array.isArray(incoming)) throw new Error('File khong dung dinh dang: thieu mang "snapshots".');
+
+  const good = incoming.filter(isSnapshot);
+  if (!good.length) throw new Error('Khong co ban luu nao hop le trong file.');
+
+  const cur = replace ? [] : await readAll();
+  const byId = new Map(cur.map((s) => [s.id, s]));
+  let added = 0;
+  let updated = 0;
+
+  for (const raw of good) {
+    const s = {
+      ...raw,
+      id: raw.id || uid(),
+      name: String(raw.name || raw.key).slice(0, 80),
+      at: raw.at || Date.now(),
+      usedAt: raw.usedAt || raw.at || Date.now(),
+      entries: raw.entries.slice(0, MAX_ENTRIES).map((e) => ({
+        label: String(e.label || '').slice(0, 140),
+        kind: e.kind || '',
+        value: String(e.value).slice(0, MAX_VALUE),
+        sig: e.sig || {},
+      })),
+    };
+    const old = byId.get(s.id);
+    if (old) {
+      if ((s.usedAt || 0) >= (old.usedAt || 0)) {
+        byId.set(s.id, s);
+        updated++;
+      }
+    } else {
+      byId.set(s.id, s);
+      added++;
+    }
+  }
+
+  const merged = await writeAll([...byId.values()]);
+  return { ok: true, added, updated, skipped: incoming.length - good.length, total: merged.length };
+}
+
 async function touch(id) {
   const list = await readAll();
   const s = list.find((x) => x.id === id);

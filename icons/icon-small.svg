@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Ban rut gon cho 16/32px: bo tia sang va co, phong to dau, mat na day hon.
+       O co nho, chi tiet nho chi thanh vet mo. -->
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e28c6a"/>
+      <stop offset="1" stop-color="#c55d3c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="url(#bg2)"/>
+  <path d="M88 486c0-74 60-122 168-122s168 48 168 122z" fill="#faf3ee"/>
+  <path d="M256 60c-74 0-122 44-122 112 0 78 54 148 122 148s122-70 122-148c0-68-48-112-122-112z" fill="#faf3ee"/>
+  <path d="M132 168c34-20 74-28 124-28s90 8 124 28v50c0 26-20 42-48 42-32 0-52-18-64-38h-24c-12 20-32 38-64 38-28 0-48-16-48-42z" fill="#2b1c17"/>
+  <ellipse cx="196" cy="200" rx="26" ry="17" fill="#ffdcca"/>
+  <ellipse cx="316" cy="200" rx="26" ry="17" fill="#ffdcca"/>
+</svg>

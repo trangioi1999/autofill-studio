@@ -70,6 +70,18 @@
           <button id="btn-mem-save" class="btn primary grow">Luu man hinh nay</button>
           <button id="btn-mem-refresh" class="btn" title="Tai lai danh sach">↻</button>
         </div>
+        <div class="memory-actions">
+          <button id="btn-mem-export" class="btn grow">Xuat file</button>
+          <button id="btn-mem-copy" class="btn grow">Copy JSON</button>
+          <button id="btn-mem-import" class="btn grow">Nhap</button>
+        </div>
+        <div id="import-box" class="import-box hide">
+          <textarea id="import-text" class="profile-box" placeholder="Dan noi dung file JSON da xuat vao day..."></textarea>
+          <div class="profile-actions">
+            <button id="btn-import-go" class="btn primary grow">Gop vao bo nho</button>
+            <button id="btn-import-cancel" class="btn">Huy</button>
+          </div>
+        </div>
         <p class="hint">
           Luu lai gia tri dang co tren form. Lan sau vao lai man hinh nay, bam
           <b>Dien</b> la xong — khong goi AI, khong ton token. O mat khau / OTP / the
@@ -115,6 +127,7 @@
 
       <div class="chips">
         <span id="provider" class="chip">—</span>
+        <span id="usage" class="chip usage hide" title="Token da dung trong phien nay"></span>
         <button id="btn-scan" class="chip act">Quet</button>
         <button id="btn-map" class="chip act">Ban do</button>
         <button id="btn-highlight" class="chip act">Danh dau</button>

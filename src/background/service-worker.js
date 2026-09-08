@@ -11,6 +11,7 @@ import {
   renderSnapshot, renderState, buildAgentPrompt, compactHistory, actionToStep,
 } from '../lib/agent.js';
 import { screenKey } from '../lib/screen.js';
+import { normalizeUsage, addUsage } from '../lib/usage.js';
 
 /* ------------------------------------------------------------------ setup */
 
@@ -146,7 +147,7 @@ async function generatePlan({ tabId, request, fields, context }) {
     steps,
     skipped: plan.skipped || [],
     raw: res.raw,
-    usage: res.usage,
+    usage: normalizeUsage(res.usage),
     ms: Date.now() - t0,
     provider: settings.provider,
   };
@@ -385,9 +386,10 @@ async function runAgent({ tabId, goal, maxSteps }) {
 
   const emit = (e) => chrome.runtime.sendMessage({ type: 'AF_EVENT', ...e }).catch(() => {});
   const turns = [];
+  let usage = null; // cong don qua moi luot — agent goi model nhieu lan
   const finish = (status, summary, step) => {
-    emit({ phase: 'agent-end', status, summary, steps: step });
-    return { status, summary, steps: step, turns };
+    emit({ phase: 'agent-end', status, summary, steps: step, usage });
+    return { status, summary, steps: step, turns, usage };
   };
 
   emit({ phase: 'agent-start', goal, max });
@@ -416,6 +418,7 @@ async function runAgent({ tabId, goal, maxSteps }) {
     emit({ phase: 'agent-think', step });
     const t0 = Date.now();
     let plan;
+    let turnUsage = null;
     try {
       const res = await complete({
         settings,
@@ -424,6 +427,8 @@ async function runAgent({ tabId, goal, maxSteps }) {
         schema: settings.provider === 'chromeai' ? null : AGENT_SCHEMA,
       });
       plan = res.json || {};
+      turnUsage = normalizeUsage(res.usage);
+      usage = addUsage(usage, turnUsage);
     } catch (e) {
       return finish('blocked', `Provider loi: ${e.message}`, step);
     }
@@ -436,6 +441,8 @@ async function runAgent({ tabId, goal, maxSteps }) {
       status: plan.status,
       count: actions.length,
       ms: Date.now() - t0,
+      turnUsage, // token cua rieng luot nay
+      usage, // cong don ca phien agent
     });
 
     const results = await runActions(tabId, actions, refMap, emit);
@@ -584,6 +591,8 @@ const routes = {
   AF_MEM_SAVE: (m) => memSave(m),
   AF_MEM_PLAN: (m) => memPlan(m),
   AF_MEM_APPLY: (m) => memApply(m),
+  AF_MEM_EXPORT: () => Mem.exportSnapshots(),
+  AF_MEM_IMPORT: (m) => Mem.importSnapshots(m.text, { replace: !!m.replace }),
   AF_MEM_RENAME: (m) => Mem.renameSnapshot(m.id, m.name),
   AF_MEM_DELETE: (m) => Mem.deleteSnapshot(m.id),
   AF_MEM_CLEAR: () => Mem.clearSnapshots(),

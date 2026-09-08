@@ -570,3 +570,15 @@ button:disabled { opacity: .45; cursor: default; }
 .saved-flash { color: var(--ok); font-size: 11px; align-self: center; opacity: 0; }
 .saved-flash.on { animation: fade 1.8s ease both; }
 @keyframes fade { 0% { opacity: 0; } 15%, 60% { opacity: 1; } 100% { opacity: 0; } }
+
+/* --------------------------------------------------------- xuat/nhap · token */
+
+.import-box { margin-top: 8px; animation: rise .2s ease both; }
+.import-box .profile-box { min-height: 130px; font-size: 11px; }
+
+.chip.usage {
+  font: 10px var(--mono);
+  border-color: var(--line); color: var(--fg-mute);
+  cursor: default;
+}
+.chip.usage b { color: var(--fg-dim); font-weight: 600; }

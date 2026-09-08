@@ -26,9 +26,43 @@ const state = {
   busy: false,
   mode: 'fill', // 'fill' = quet & dien mot phat · 'agent' = vong lap dieu khien
   agentRunning: false,
+  usage: { input: 0, output: 0, total: 0, calls: 0 },
 };
 
 const send = (msg) => chrome.runtime.sendMessage({ ...msg, tabId: msg.tabId ?? state.tabId });
+
+/** 1234 -> "1.2k". Giong lib/usage.js nhung panel khong import module duoc. */
+const fmtTok = (n) => {
+  if (!n) return '0';
+  if (n < 1000) return String(n);
+  if (n < 1e6) return `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`;
+  return `${(n / 1e6).toFixed(1)}M`;
+};
+
+/** Cong don token cua ca phien, hien o thanh soan. */
+function addUsage(u) {
+  if (!u || !u.total) return;
+  const s = state.usage;
+  s.input += u.input || 0;
+  s.output += u.output || 0;
+  s.total += u.total || 0;
+  s.calls += 1;
+  renderUsage();
+}
+
+function renderUsage() {
+  const chip = $('#usage');
+  const u = state.usage;
+  chip.classList.toggle('hide', !u.total);
+  if (!u.total) return;
+  chip.textContent = '';
+  chip.append(
+    document.createTextNode('phien nay: '),
+    el('b', '', fmtTok(u.total)),
+    document.createTextNode(` tok · ${u.calls} lan goi`)
+  );
+  chip.title = `Vao ${fmtTok(u.input)} · ra ${fmtTok(u.output)} · ${u.calls} lan goi model trong phien nay`;
+}
 
 function setBusy(on) {
   state.busy = on;
@@ -578,6 +612,9 @@ chrome.runtime.onMessage.addListener((m) => {
     row.append(btn('Xem ke hoach', () => switchView('plan')));
     card.append(row);
 
+    if (m.usage) addUsage(m.usage);
+    if (m.usage?.total) card.append(el('div', 'meta', `${fmtTok(m.usage.total)} token cho lan goi nay`));
+
     ev(
       state.planSource === 'memory'
         ? `Lay ${state.steps.length} gia tri tu bo nho`
@@ -625,6 +662,12 @@ chrome.runtime.onMessage.addListener((m) => {
     if (m.thought) card.append(el('div', 'thought', m.thought));
     const calls = el('div', 'calls');
     card.append(calls);
+    // Cong token cua RIENG luot nay; m.usage la tong cong don cua ca phien
+    // agent, tru ra se sai neu truoc do da chay che do Dien form.
+    if (m.turnUsage) addUsage(m.turnUsage);
+    if (m.usage?.total) {
+      card.append(el('div', 'meta', `Ca phien agent: ${fmtTok(m.usage.total)} token / ${m.usage.calls || 1} lan goi`));
+    }
     const node = ev(`Chon ${m.count} hanh dong`, { kind: 'ok', ms: m.ms || null, card });
     node.dataset.turn = '1';
     currentCalls = calls;
@@ -642,7 +685,8 @@ chrome.runtime.onMessage.addListener((m) => {
       stopped: 'Da dung theo yeu cau',
       maxsteps: 'Het so luot cho phep',
     }[m.status] || m.status;
-    ev(`${label} — sau ${m.steps} luot`, { kind, detail: m.summary || '' });
+    const cost = m.usage?.total ? `\n${fmtTok(m.usage.total)} token qua ${m.usage.calls || m.steps} lan goi model` : '';
+    ev(`${label} — sau ${m.steps} luot`, { kind, detail: (m.summary || '') + cost });
     toast(label, kind);
   }
 
@@ -839,6 +883,53 @@ $('#btn-profile-save').onclick = async () => {
   void f.offsetWidth; // ep chay lai animation
   f.classList.add('on');
   toast('Da luu ho so', 'ok');
+};
+
+$('#btn-mem-export').onclick = async () => {
+  const r = await send({ type: 'AF_MEM_EXPORT' });
+  if (!r?.ok) return toast(r?.error || 'Xuat that bai', 'err');
+  if (!r.count) return toast('Chua co ban luu nao de xuat', 'err');
+  const blob = new Blob([r.text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = el('a');
+  a.href = url;
+  a.download = `autofill-studio-bo-nho-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast(`Da xuat ${r.count} ban luu`, 'ok');
+};
+
+$('#btn-mem-copy').onclick = async () => {
+  const r = await send({ type: 'AF_MEM_EXPORT' });
+  if (!r?.ok || !r.count) return toast('Chua co ban luu nao de copy', 'err');
+  await navigator.clipboard.writeText(r.text);
+  toast(`Da copy ${r.count} ban luu vao clipboard`, 'ok');
+};
+
+$('#btn-mem-import').onclick = () => {
+  $('#import-box').classList.toggle('hide');
+  if (!$('#import-box').classList.contains('hide')) $('#import-text').focus();
+};
+
+$('#btn-import-cancel').onclick = () => {
+  $('#import-box').classList.add('hide');
+  $('#import-text').value = '';
+};
+
+$('#btn-import-go').onclick = async () => {
+  const text = $('#import-text').value.trim();
+  if (!text) return toast('Chua dan gi vao', 'err');
+  const r = await send({ type: 'AF_MEM_IMPORT', text });
+  if (!r?.ok) return toast(r?.error || 'Nhap that bai', 'err');
+  $('#import-box').classList.add('hide');
+  $('#import-text').value = '';
+  const bits = [`them ${r.added}`, r.updated ? `cap nhat ${r.updated}` : '', r.skipped ? `bo qua ${r.skipped} ban hong` : '']
+    .filter(Boolean)
+    .join(' · ');
+  toast(`Da nhap: ${bits}`, 'ok');
+  await refreshMemory();
 };
 
 $('#btn-mem-refresh').onclick = refreshMemory;
