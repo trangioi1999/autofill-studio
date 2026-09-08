@@ -56,9 +56,35 @@ const readBody = (req) =>
     req.on('error', reject);
   });
 
+const IS_WIN = process.platform === 'win32';
+
+/** Boc doi so cho cmd.exe. Chi dung khi buoc phai di qua shim .cmd/.bat. */
+const winQuote = (a) => `"${String(a).replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`;
+
 function run(cmd, args, input) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32' });
+    // Tren Windows, CLI cai bang npm thuong la shim .cmd/.bat — Node chi chay
+    // duoc chung qua cmd.exe. Con lai luon spawn truc tiep (shell: false) de
+    // noi dung trang khong bao gio bi shell dien giai.
+    let bin = cmd;
+    let argv = args;
+    let opts = { stdio: ['pipe', 'pipe', 'pipe'] };
+
+    if (IS_WIN && /\.(cmd|bat)$/i.test(cmd)) {
+      if (args.some((a) => /[\r\n]/.test(String(a)))) {
+        return reject(
+          new Error(
+            `"${cmd}" la shim .cmd nen doi so khong duoc chua xuong dong. ` +
+              'Dat AF_CMD tro thang toi file .exe, hoac dung backend khac.'
+          )
+        );
+      }
+      bin = process.env.ComSpec || 'cmd.exe';
+      argv = ['/d', '/s', '/c', [winQuote(cmd), ...args.map(winQuote)].join(' ')];
+      opts.windowsVerbatimArguments = true;
+    }
+
+    const p = spawn(bin, argv, opts);
     let out = '';
     let err = '';
     const timer = setTimeout(() => {
@@ -83,12 +109,18 @@ function run(cmd, args, input) {
   });
 }
 
+/**
+ * Tra ve duong dan day du cua lenh, hoac null.
+ * Duong dan day du quan trong tren Windows: ta can biet no la .exe hay .cmd
+ * de quyet dinh co phai di qua cmd.exe hay khong.
+ */
 const which = async (cmd) => {
   try {
-    await run(process.platform === 'win32' ? 'where' : 'which', [cmd]);
-    return true;
+    const out = await run(IS_WIN ? 'where' : 'which', [cmd]);
+    const first = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0];
+    return first || null;
   } catch {
-    return false;
+    return null;
   }
 };
 
@@ -111,14 +143,23 @@ async function resolveBin(logical) {
   const hit = binCache.get(logical);
   if (hit && Date.now() - hit.at < BIN_TTL) return hit.bin;
   let bin = null;
+  let name = null;
   for (const c of BIN_CANDIDATES[logical] || [logical]) {
-    if (await which(c)) {
-      bin = c;
+    const found = await which(c);
+    if (found) {
+      bin = found;
+      name = c;
       break;
     }
   }
-  binCache.set(logical, { bin, at: Date.now() });
+  binCache.set(logical, { bin, name, at: Date.now() });
   return bin;
+}
+
+/** Ten ngan de hien thi (claude, kiro...) thay vi ca duong dan. */
+async function resolveName(logical) {
+  await resolveBin(logical);
+  return binCache.get(logical)?.name || null;
 }
 
 async function runBin(logical, args, input) {
@@ -135,7 +176,7 @@ async function availableBackends() {
   const out = [];
   for (const logical of Object.keys(BIN_CANDIDATES)) {
     const bin = await resolveBin(logical);
-    if (bin) out.push({ name: logical, bin });
+    if (bin) out.push({ name: logical, bin: (await resolveName(logical)) || bin, path: bin });
   }
   try {
     const r = await fetch(`${OLLAMA}/api/tags`);
@@ -143,6 +184,35 @@ async function availableBackends() {
   } catch {
     /* noop */
   }
+  return out;
+}
+
+/**
+ * Tach mot dong lenh thanh [bin, ...args], ton trong dau nhay.
+ * Can thiet tren Windows vi duong dan hay co dau cach:
+ *   AF_CMD='"C:\\Program Files\\ai\\cli.exe" --json'
+ */
+function tokenize(line) {
+  const out = [];
+  let cur = '';
+  let quote = null;
+  let has = false;
+  for (const ch of String(line)) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      has = true;
+    } else if (/\s/.test(ch)) {
+      if (cur || has) out.push(cur);
+      cur = '';
+      has = false;
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur || has) out.push(cur);
   return out;
 }
 
@@ -156,8 +226,11 @@ const stripFence = (t) =>
 
 const backends = {
   async claude({ system, user }) {
-    // Claude Code CLI o che do headless
-    return runBin('claude', ['-p', '--output-format', 'text', '--append-system-prompt', system], user);
+    // Claude Code CLI o che do headless.
+    // System prompt di qua stdin chu khong qua argv: no dai va co xuong dong,
+    // ma argv nhieu dong thi vo tren Windows (va la duong cho noi dung trang
+    // lot vao dong lenh).
+    return runBin('claude', ['-p', '--output-format', 'text'], `${system}\n\n---\n\n${user}`);
   },
 
   async gemini({ system, user }) {
@@ -194,7 +267,8 @@ const backends = {
   async custom({ system, user }) {
     const cmd = process.env.AF_CMD;
     if (!cmd) throw new Error('Chua dat bien moi truong AF_CMD');
-    const [bin, ...args] = cmd.split(' ');
+    const [bin, ...args] = tokenize(cmd);
+    if (!bin) throw new Error('AF_CMD rong');
     return run(bin, args, `${system}\n\n---\n\n${user}`);
   },
 };

@@ -1,0 +1,8 @@
+# Giu LF cho moi file text ke ca khi checkout tren Windows.
+# Quan trong voi bridge/server.mjs: shebang "#!/usr/bin/env node" se hong neu
+# dong dau ket thuc bang CRLF (Git Bash / WSL bao "bad interpreter").
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

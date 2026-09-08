@@ -50,7 +50,19 @@ Bạn có hỏi về hướng này. Nó vi phạm ToS của cả hai bên, có t
 
 ```bash
 node bridge/server.mjs
-# hoặc: AF_PORT=8765 AF_TOKEN=bimat node bridge/server.mjs
+```
+
+Đặt biến môi trường thì cú pháp khác nhau tuỳ shell:
+
+```bash
+# macOS / Linux
+AF_PORT=8765 AF_TOKEN=bimat node bridge/server.mjs
+
+# Windows — PowerShell
+$env:AF_PORT=8765; $env:AF_TOKEN="bimat"; node bridge/server.mjs
+
+# Windows — cmd.exe
+set AF_PORT=8765&& set AF_TOKEN=bimat&& node bridge/server.mjs
 ```
 
 Server tự dò backend có sẵn. Trong Cài đặt, ô **Backend** nhận: `claude`, `gemini`, `kiro`, `ollama:qwen2.5:7b`, hoặc `default` (tự chọn). Muốn lệnh riêng: `AF_CMD="lệnh của bạn" node bridge/server.mjs`.
@@ -58,7 +70,12 @@ Server tự dò backend có sẵn. Trong Cài đặt, ô **Backend** nhận: `cl
 **Về Kiro:** AWS đã đổi tên Amazon Q Developer CLI thành **Kiro CLI**, binary từ `q` sang `kiro`. Bridge dò lần lượt `kiro` → `kiro-cli` → `q` nên bản nào cũng chạy, và `model` nhận cả `kiro` lẫn `q`. Đăng nhập:
 
 ```bash
+# macOS
 brew install --cask kiro-cli
+
+# Windows — tải installer từ trang Kiro, hoặc:
+winget install Amazon.Kiro
+
 kiro login          # chọn Free (AWS Builder ID) hoặc Pro (IAM Identity Center)
 kiro whoami         # kiểm tra
 ```
@@ -260,6 +277,23 @@ Trong lúc chạy, panel nói cho bạn biết nó đang làm gì chứ không �
 
 ---
 
+## Chạy trên Windows
+
+Extension thì không có gì khác — Chrome là Chrome. Chỗ khác nhau nằm ở **Local Bridge**, vì nó spawn tiến trình:
+
+- **Dò CLI** dùng `where` thay `which`, và lấy đường dẫn đầy đủ để biết thứ tìm được là `.exe` hay `.cmd`.
+- **Shim `.cmd`** — CLI cài bằng npm trên Windows là file `.cmd`, Node chỉ chạy được qua `cmd.exe`. Bridge tự phát hiện và bọc đối số đúng cách, thay vì bật `shell: true` cho mọi thứ (bật bừa thì nội dung trang web sẽ bị `cmd.exe` diễn giải — vừa vỡ vừa nguy hiểm).
+- **Prompt đi qua stdin**, không qua dòng lệnh. System prompt dài, nhiều dòng, có dấu nháy — đưa vào argv là hỏng trên Windows. Riêng `gemini` bắt buộc dùng `-p <prompt>` nên vẫn qua argv; nếu gặp lỗi lạ với Gemini CLI trên Windows thì đổi sang backend `claude` hoặc `ollama`.
+- **`AF_CMD`** tách theo dấu nháy, nên đường dẫn có dấu cách vẫn chạy:
+  `AF_CMD='"C:\Program Files\ai\cli.exe" --json'`
+- **`.gitattributes`** ép LF, để shebang của `server.mjs` không chết vì CRLF.
+
+Phím tắt `Alt+Shift+F` / `Alt+Shift+P` giống nhau hai bên. Trong side panel, `Cmd+Enter` và `Ctrl+Enter` đều chạy.
+
+Thành thật: tôi kiểm thử trên macOS. Phần Windows là sửa theo đúng tài liệu Node về spawn và shim `.cmd`, chưa chạy thật trên máy Windows.
+
+---
+
 ## Giới hạn có thật
 
 - **Closed shadow DOM** không đọc được — đây là giới hạn của trình duyệt, không có cách vòng.
@@ -303,7 +337,7 @@ testpage/           form thử: Material select, multi-select, shadow DOM, ifram
 
 **Bộ nhớ theo màn hình** — test lưu/ghép với `chrome.storage` giả lập: lọc đúng 4/8 ô (bỏ password, OTP, ô rỗng, checkbox chưa tick), gom `/apply/999` với `/apply/12345` về một khoá, ghép lại đủ 4 ô sau khi selector đổi và thứ tự đảo, checkbox trả về boolean, và ghép **0 ô** khi thả vào một form không liên quan.
 
-**Bridge** — `/health` và `/v1/complete` chạy thật, xác nhận `kiro` và `q` cùng trỏ về một backend và báo lỗi rõ khi chưa cài CLI.
+**Bridge** — `/health` và `/v1/complete` chạy thật, xác nhận `kiro` và `q` cùng trỏ về một backend và báo lỗi rõ khi chưa cài CLI. `AF_CMD` với đường dẫn có dấu cách và đối số trong dấu nháy tách đúng. Backend `claude` gửi system prompt qua stdin — argv chỉ còn `-p --output-format text`, không còn nội dung trang nào lọt vào dòng lệnh.
 
 **Agent** — chạy `service-worker.js` thật trong Node với `chrome.*` giả lập và một "model" HTTP trả JSON theo kịch bản, trên một trang 2 bước: đi hết 2 bước và kết thúc `done`; dừng đúng sau `click` nên hành động xếp sau bị bỏ; ref không tồn tại báo lỗi chứ không crash; lượt 2 nhận bản đồ mới + lịch sử lượt 1; không tự bấm "Gửi hồ sơ". Nút dừng trả `stopped` giữa chừng, trần lượt trả `maxsteps`.
 
