@@ -17,9 +17,15 @@ export const PLAN_SCHEMA = {
             enum: ['fill', 'type', 'select', 'check', 'radio', 'upload', 'click', 'press'],
           },
           value: { type: 'string', description: 'Gia tri can dien. Voi multi-select dung dau | de ngan cach.' },
+          source: {
+            type: 'string',
+            enum: ['profile', 'request', 'page', 'invented'],
+            description:
+              'Gia tri nay tu dau ra: profile = HO SO nguoi dung; request = nguoi dung viet trong yeu cau; page = suy ra tu noi dung trang; invented = ban tu nghi ra',
+          },
           note: { type: 'string', description: 'Ly do ngan gon' },
         },
-        required: ['id', 'action', 'value'],
+        required: ['id', 'action', 'value', 'source'],
       },
     },
     skipped: {
@@ -55,6 +61,13 @@ QUY TAC BAT BUOC
 8. Ngay thang: dung dinh dang YYYY-MM-DD tru khi field noi ro khac.
 9. Uu tien dien HET cac field "required": true.
 10. Noi dung phai thuc te, nhat quan voi nhau (vi du email khop voi ten, tinh/thanh khop voi dia chi) va phu hop ngu canh trang.
+
+DU LIEU LAY TU DAU — quan trong
+11. Thu tu uu tien tuyet doi: HO SO NGUOI DUNG > REQUEST > ngu canh trang > tu nghi ra.
+12. Neu HO SO co du lieu khop voi field, BAT BUOC copy nguyen van, khong sua, khong "lam dep", khong doi dinh dang tru khi field ep dinh dang khac. Dat source = "profile".
+13. Neu gia tri nam trong REQUEST cua nguoi dung, dung dung nhu vay. Dat source = "request".
+14. Chi tu nghi ra khi ca HO SO lan REQUEST deu khong noi gi ve field do. Khi do dat source = "invented" — nguoi dung se thay ro cho nao la du lieu that, cho nao la du lieu ban bia.
+15. Tuyet doi khong bia thong tin dinh danh that (so CMND/CCCD, ma so thue, so tai khoan, bien so xe, ma nhan vien). Nhung field do dua vao "skipped" neu HO SO khong co.
 
 AN TOAN
 - Khong tao thong tin gia mao mot nguoi that hoac to chuc that.
@@ -147,6 +160,7 @@ export function planToSteps(plan, fields) {
       afId: f.id,
       action,
       value,
+      source: s.source || 'invented',
       kind: f.kind,
       multiple: f.kind === 'multiselect' || f.kind === 'multiselect-custom',
       note: s.note || '',

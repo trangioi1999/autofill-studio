@@ -32,6 +32,7 @@
       <button data-view="fields">Fields <span id="c-fields" class="badge">0</span></button>
       <button data-view="plan">Ke hoach <span id="c-plan" class="badge">0</span></button>
       <button data-view="memory">Bo nho <span id="c-mem" class="badge">0</span></button>
+      <button data-view="profile">Ho so</button>
     </nav>
 
     <main class="scroll">
@@ -48,6 +49,10 @@
       <!-- ------------------------------------------------------- fields -->
       <section id="view-fields" class="view hide">
         <input id="q" type="search" class="search" placeholder="Loc theo nhan / ten / loai..." />
+        <div id="fields-skel" class="skel hide">
+          <div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div>
+          <div class="skel-row"></div><div class="skel-row"></div>
+        </div>
         <div id="fields" class="list"></div>
         <p class="empty" id="fields-empty">Chua quet. Bam <b>Quet</b> o thanh duoi.</p>
       </section>
@@ -74,6 +79,29 @@
         <div class="lbl mt" id="mem-other-lbl">Man hinh khac</div>
         <div id="mem-other" class="list"></div>
         <p class="empty" id="mem-empty">Chua luu man hinh nao.</p>
+      </section>
+      <!-- ------------------------------------------------------ profile -->
+      <section id="view-profile" class="view hide">
+        <p class="hint">
+          Du lieu that cua ban. AI <b>uu tien tuyet doi</b> cho nhung gi viet o day —
+          co thi copy nguyen van, khong co moi tu nghi ra. De trong thi moi gia tri
+          deu la do AI bia, va se bi danh dau <span class="src invented">invented</span>
+          trong tab Ke hoach.
+        </p>
+        <textarea
+          id="profile"
+          class="profile-box"
+          placeholder="Ho ten: Tran Gioi&#10;Email: gioitv.dev@gmail.com&#10;Dien thoai: 09xxxxxxxx&#10;Ngay sinh: 1999-01-01&#10;Dia chi: 123 Nguyen Hue, Quan 1, TP.HCM&#10;Cong ty: ...&#10;Chuc danh: Senior Frontend Developer&#10;Kinh nghiem: 6 nam Angular, RxJS, Nx&#10;LinkedIn: ...&#10;Muc luong mong muon: ..."
+        ></textarea>
+        <div class="profile-actions">
+          <button id="btn-profile-save" class="btn primary grow">Luu ho so</button>
+          <span id="profile-saved" class="saved-flash">Da luu</span>
+        </div>
+        <p class="hint mt">
+          Khong luu mat khau, OTP, so the, CCCD o day. Ho so nam trong
+          <code>chrome.storage.local</code> tren may ban, khong dong bo di dau,
+          va chi duoc gui kem khi ban chay mot lan dien.
+        </p>
       </section>
     </main>
 

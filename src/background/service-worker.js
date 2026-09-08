@@ -360,6 +360,7 @@ async function runActions(tabId, actions, refMap, emit) {
       tool: a.tool,
       target: target?.name || a.ref || a.url || a.text || a.direction || '',
       value: a.value,
+      source: a.source || '',
       ok: !!r.ok,
       error: r.error || '',
       note: r.note || '',

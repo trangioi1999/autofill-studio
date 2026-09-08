@@ -38,6 +38,11 @@ export const AGENT_SCHEMA = {
           tool: { type: 'string', enum: TOOLS.map((t) => t[0]) },
           ref: { type: 'string', description: 'ref cua element, vi du "e7"' },
           value: { type: 'string' },
+          source: {
+            type: 'string',
+            enum: ['profile', 'goal', 'page', 'invented'],
+            description: 'Gia tri lay tu dau: profile = HO SO; goal = muc tieu nguoi dung viet; page = doc tu trang; invented = tu nghi ra',
+          },
           key: { type: 'string' },
           url: { type: 'string' },
           direction: { type: 'string' },
@@ -75,6 +80,7 @@ QUY TAC
 3. Gom nhieu hanh dong vao mot luot khi chung doc lap (dien 8 o cung luc). Nhung neu mot hanh dong lam trang doi (click "Tiep tuc", mo dialog, navigate) thi de no la hanh dong CUOI cua luot.
 4. Sau khi trang doi, doc ky ban do moi truoc khi lam tiep. Neu thay ERRORS thi sua cho sai roi thu lai.
 5. Field co gia tri dung san thi bo qua, dung dien lai.
+5b. DU LIEU: uu tien HO SO NGUOI DUNG > MUC TIEU > doc tu trang > tu nghi ra. Co trong HO SO thi copy nguyen van. Moi hanh dong co "value" phai kem "source" noi ro lay tu dau — nguoi dung can biet cho nao la du lieu that, cho nao ban bia. Khong bia so CMND/CCCD, ma so thue, so tai khoan.
 6. Khong tim thay thu can tim: thu scroll xuong, hoac read de doc noi dung, roi moi ket luan.
 7. Xong muc tieu thi status = "done" kem summary. Khong the di tiep (can dang nhap, captcha, thieu du lieu) thi status = "blocked" kem ly do cu the.
 8. Dung lap lai y het mot hanh dong da that bai hai lan — doi cach khac hoac bao blocked.

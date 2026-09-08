@@ -37,6 +37,12 @@ function setBusy(on) {
   $('#btn-scan').disabled = on;
 }
 
+/** Khung xuong nhap nhay khi dang quet — de nguoi dung thay no dang lam viec. */
+function setScanning(on) {
+  $('#fields-skel').classList.toggle('hide', !on);
+  if (on) $('#fields-empty').classList.add('hide');
+}
+
 function setAgentRunning(on) {
   state.agentRunning = on;
   $('#btn-stop').classList.toggle('hide', !on);
@@ -51,6 +57,7 @@ function finishEv(kind = 'ok', mark = '✓') {
   if (!openEv) return;
   openEv.classList.remove('run');
   openEv.classList.add(kind);
+  openEv.querySelector('.dots')?.remove();
   const dot = openEv.querySelector('.dot');
   if (dot) dot.textContent = mark;
   openEv = null;
@@ -67,7 +74,13 @@ function ev(text, { kind = 'run', detail = '', ms = null, card = null } = {}) {
   const node = el('div', `ev ${kind}`);
   const dot = el('span', 'dot', kind === 'ok' ? '✓' : kind === 'err' ? '✕' : '');
   const head = el('div', 'head');
-  head.append(el('span', 'txt', text));
+  const txt = el('span', 'txt', text);
+  if (kind === 'run') {
+    const dots = el('span', 'dots');
+    dots.append(el('i'), el('i'), el('i'));
+    txt.append(dots);
+  }
+  head.append(txt);
   if (ms != null) head.append(el('span', 'ms', `${ms}ms`));
   node.append(dot, head);
   if (detail) node.append(el('div', 'detail', detail));
@@ -122,8 +135,9 @@ function callRow(a) {
   const arg = [a.target, a.value != null && a.value !== '' ? `"${a.value}"` : '']
     .filter(Boolean)
     .join(' ');
+  row.append(el('span', 't', a.tool));
+  if (a.source) row.append(el('span', `src ${a.source}`, SRC_LABEL[a.source] || a.source));
   row.append(
-    el('span', 't', a.tool),
     el('span', 'a', a.error ? `${arg} — ${a.error}` : a.note ? `${arg} ${a.note}`.trim() : arg),
     el('span', 's', a.ok ? '✓' : '✕')
   );
@@ -145,6 +159,7 @@ async function init() {
   await pickTab();
   state.settings = await send({ type: 'AF_GET_SETTINGS' });
   $('#prompt').value = state.settings.lastPrompt || '';
+  $('#profile').value = state.settings.persona || '';
   autoGrow();
   renderProvider();
   renderMode();
@@ -262,6 +277,15 @@ function renderFields() {
   }
 }
 
+/** Nhan cho biet gia tri lay tu dau — de nguoi dung khong nham du lieu bia. */
+const SRC_LABEL = {
+  profile: 'ho so',
+  request: 'yeu cau',
+  goal: 'muc tieu',
+  page: 'tu trang',
+  invented: 'AI bia',
+};
+
 const btn = (label, onClick, cls = 'btn tiny') => {
   const b = el('button', cls, label);
   b.onclick = onClick;
@@ -292,6 +316,12 @@ function renderPlan() {
       )
     );
     if (done) head.append(el('div', 'meta', `Da chay: ${ok}/${done} thanh cong.`));
+    const invented = state.steps.filter((x) => x.source === 'invented').length;
+    if (invented) {
+      const w = el('div', 'meta', `${invented} gia tri do AI tu bia. Dien Ho so cua ban de no dung du lieu that.`);
+      w.style.color = 'var(--warn)';
+      head.append(w);
+    }
     const row = el('div', 'row');
     row.append(
       btn('Ap dung ke hoach', applyPlan, 'btn primary grow'),
@@ -308,6 +338,7 @@ function renderPlan() {
     const item = el('div', 'item' + (res ? (res.ok ? ' ok' : ' err') : ''));
     const top = el('div', 'top');
     top.append(el('span', 'kind', s.action), el('span', 'name', s.label || s.afId));
+    if (s.source) top.append(el('span', `src ${s.source}`, SRC_LABEL[s.source] || s.source));
     if (res) top.append(el('span', `state ${res.ok ? 'ok' : 'err'}`, res.ok ? '✓' : '✕'));
     item.append(top);
 
@@ -716,6 +747,7 @@ $('#btn-map').onclick = async () => {
 $('#btn-scan').onclick = async () => {
   switchView('fields');
   setBusy(true);
+  setScanning(true);
   ev('Dang quet trang...');
   try {
     const r = await send({ type: 'AF_SCAN_TAB', deep: state.settings.deepScan });
@@ -730,6 +762,7 @@ $('#btn-scan').onclick = async () => {
     ev('Quet loi: ' + e.message, { kind: 'err' });
     toast(e.message, 'err');
   } finally {
+    setScanning(false);
     setBusy(false);
   }
 };
@@ -797,6 +830,15 @@ $('#btn-mem-save').onclick = async () => {
   } finally {
     setBusy(false);
   }
+};
+
+$('#btn-profile-save').onclick = async () => {
+  state.settings = await send({ type: 'AF_SET_SETTINGS', patch: { persona: $('#profile').value } });
+  const f = $('#profile-saved');
+  f.classList.remove('on');
+  void f.offsetWidth; // ep chay lai animation
+  f.classList.add('on');
+  toast('Da luu ho so', 'ok');
 };
 
 $('#btn-mem-refresh').onclick = refreshMemory;

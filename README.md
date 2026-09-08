@@ -12,7 +12,7 @@ Ba chế độ, chọn theo việc:
 
 <p align="center">
   <img src="docs/panel-agent.png" width="320" alt="Agent chạy tool" />
-  <img src="docs/panel-memory.png" width="320" alt="Bộ nhớ theo màn hình" />
+  <img src="docs/panel-source.png" width="320" alt="Nguồn của từng giá trị" />
 </p>
 
 ---
@@ -94,6 +94,38 @@ kiro whoami         # kiểm tra
 **Rich text** — Quill, ProseMirror, Draft, CKEditor inline: dùng `execCommand('insertText')` để editor nhận đúng `beforeinput`.
 
 **Khác** — checkbox/toggle custom, radio group, date input (tự đổi `12/03/1995` → `1995-03-12` theo chuẩn Việt Nam), input có mask (gõ từng ký tự).
+
+---
+
+## Dữ liệu điền vào lấy từ đâu
+
+Câu hỏi đáng hỏi nhất, nên nó được trả lời ngay trên giao diện: **mỗi giá trị đều mang một nhãn nguồn**.
+
+| Nhãn | Nghĩa |
+|---|---|
+| `hồ sơ` | Copy nguyên văn từ **Hồ sơ** bạn tự điền |
+| `yêu cầu` | Bạn viết ra trong ô prompt |
+| `từ trang` | Suy ra từ nội dung trang đang mở |
+| `AI bịa` | Không có ở đâu cả — model tự nghĩ ra |
+
+Thứ tự ưu tiên là tuyệt đối: **hồ sơ > yêu cầu > trang > tự nghĩ**. Có trong hồ sơ thì bắt buộc dùng nguyên văn, không "làm đẹp", không đổi định dạng.
+
+Tab **Hồ sơ** trong side panel là nơi bạn dán dữ liệu thật của mình:
+
+```
+Họ tên: Trần Giới
+Email: gioitv.dev@gmail.com
+Điện thoại: 09xxxxxxxx
+Địa chỉ: 123 Nguyễn Huệ, Quận 1, TP.HCM
+Chức danh: Senior Frontend Developer
+Kinh nghiệm: 6 năm Angular, RxJS, Nx
+```
+
+Để trống thì mọi giá trị đều là `AI bịa` — và tab Kế hoạch sẽ cảnh báo *"N giá trị do AI tự bịa"* ngay trên đầu, để bạn không lỡ gửi đi một hồ sơ toàn thông tin ảo. Model **không được phép bịa** số CMND/CCCD, mã số thuế, số tài khoản; không có trong hồ sơ thì nó bỏ qua field đó.
+
+Nếu model quên khai nguồn, extension mặc định gán `invented` — nghi ngờ trước đã, an toàn hơn.
+
+Hồ sơ nằm trong `chrome.storage.local` trên máy bạn, không đồng bộ đi đâu, chỉ gửi kèm khi bạn thực sự chạy một lần điền.
 
 ---
 
@@ -215,6 +247,19 @@ Plan **không tự chạy mù** — bạn xem, sửa giá trị, bỏ bước kh
 
 ---
 
+## Giao diện
+
+Bảng màu mượn của Claude — nền giấy ấm `#faf9f5`, chữ than, điểm nhấn đất sét `#d97757`, wordmark serif. Tối là biến thể `#262624`, tự đổi theo hệ điều hành.
+
+Trong lúc chạy, panel nói cho bạn biết nó đang làm gì chứ không đứng im: tia sáng ở góc quay chậm, một vạch tiến trình mảnh chạy dưới thanh tiêu đề, bước đang chạy có vòng tròn lan toả và ba chấm nhấp nháy, tool call hiện ra lần lượt chứ không bụp một phát, và tab Fields hiện khung xương quét sáng trong lúc chờ. Tất cả tự tắt khi bạn bật `prefers-reduced-motion`.
+
+<p align="center">
+  <img src="docs/panel-loading.png" width="320" alt="Trạng thái đang chạy" />
+  <img src="docs/panel-memory.png" width="320" alt="Bộ nhớ theo màn hình" />
+</p>
+
+---
+
 ## Giới hạn có thật
 
 - **Closed shadow DOM** không đọc được — đây là giới hạn của trình duyệt, không có cách vòng.
@@ -245,7 +290,7 @@ src/
                storage.js  cài đặt
                screen.js   nhận diện màn hình + chấm điểm khớp field
                memory.js   kho bản lưu theo màn hình
-  sidepanel/   panel.html/js/css
+  sidepanel/   panel.html/js/css   5 tab: Hoạt động · Fields · Kế hoạch · Bộ nhớ · Hồ sơ
   devtools/    panel.html/js
   options/     options.html/js
 bridge/server.mjs   Local Bridge (Node, không dependency)
@@ -261,5 +306,7 @@ testpage/           form thử: Material select, multi-select, shadow DOM, ifram
 **Bridge** — `/health` và `/v1/complete` chạy thật, xác nhận `kiro` và `q` cùng trỏ về một backend và báo lỗi rõ khi chưa cài CLI.
 
 **Agent** — chạy `service-worker.js` thật trong Node với `chrome.*` giả lập và một "model" HTTP trả JSON theo kịch bản, trên một trang 2 bước: đi hết 2 bước và kết thúc `done`; dừng đúng sau `click` nên hành động xếp sau bị bỏ; ref không tồn tại báo lỗi chứ không crash; lượt 2 nhận bản đồ mới + lịch sử lượt 1; không tự bấm "Gửi hồ sơ". Nút dừng trả `stopped` giữa chừng, trần lượt trả `maxsteps`.
+
+**Nguồn dữ liệu** — `source` từ model được giữ nguyên; model quên khai thì mặc định `invented`; schema bắt buộc có `source` và chỉ nhận 4 giá trị hợp lệ.
 
 **Bản đồ trang** — `50-snapshot.js` chạy trên `testpage/index.html` thật: đọc đúng 18 element gồm cả shadow DOM, và sau khi hành động thì phản ánh đúng giá trị của mat-select, multi-select, native select, radio, checkbox — không nhầm placeholder (`-- Chọn --`, `Chọn...`) thành giá trị.

@@ -3,51 +3,59 @@
  * tach bach duoc dau la extension dau la trang.
  */
 
-:root {
-  --bg: #0c0c11;
-  --surface: #14141b;
-  --surface-2: #1a1a23;
-  --line: #262633;
-  --line-soft: #1e1e28;
-  --fg: #e9e8f2;
-  --fg-dim: #a3a1b8;
-  --fg-mute: #6f6d84;
+/* Bang mau lay theo Claude: nen giay am, chu than thien, diem nhan dat set.
+ * Sang la mac dinh vi do la cach Claude trong quen mat nhat; toi la bien the. */
 
-  --accent: #8b7bff;
-  --accent-ink: #0c0c11;
-  --accent-soft: #1d1930;
-  --ok: #3ecf8e;
-  --ok-soft: #10241c;
-  --err: #ff6b6b;
-  --err-soft: #2a1518;
-  --warn: #f5b544;
+:root {
+  --bg: #faf9f5;          /* giay */
+  --surface: #ffffff;
+  --surface-2: #f0eee6;   /* thanh ben */
+  --line: #e3e1d9;
+  --line-soft: #edebe3;
+  --fg: #191919;
+  --fg-dim: #565651;
+  --fg-mute: #8b8985;
+
+  --accent: #d97757;      /* dat set — mau chu ky cua Claude */
+  --accent-ink: #ffffff;
+  --accent-soft: #faeee9;
+  --accent-line: #e8b9a5;
+
+  --ok: #3d8a5f;
+  --ok-soft: #eaf3ed;
+  --err: #bf4d43;
+  --err-soft: #fbeceb;
+  --warn: #b8873b;
 
   --r: 10px;
   --r-sm: 7px;
+  --serif: ui-serif, Georgia, "Times New Roman", serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #ffffff;
-    --surface: #fbfaff;
-    --surface-2: #f4f2fb;
-    --line: #e6e3f0;
-    --line-soft: #eeecf6;
-    --fg: #17151f;
-    --fg-dim: #5f5c73;
-    --fg-mute: #8b8899;
+    --bg: #262624;
+    --surface: #30302e;
+    --surface-2: #1f1e1d;
+    --line: #3e3e3b;
+    --line-soft: #363634;
+    --fg: #f5f4ef;
+    --fg-dim: #b7b5ad;
+    --fg-mute: #83817b;
 
-    --accent: #6c4dff;
-    --accent-ink: #ffffff;
-    --accent-soft: #f0ecff;
-    --ok: #12a06a;
-    --ok-soft: #e7f7f0;
-    --err: #d92d2d;
-    --err-soft: #fdeceb;
-    --warn: #b87600;
-    color-scheme: light;
+    --accent: #d97757;
+    --accent-ink: #1f1e1d;
+    --accent-soft: #3a2b25;
+    --accent-line: #7a4f3d;
+
+    --ok: #6cba8a;
+    --ok-soft: #23302a;
+    --err: #e0776c;
+    --err-soft: #382523;
+    --warn: #d2a45f;
+    color-scheme: dark;
   }
 }
 
@@ -83,7 +91,10 @@ body {
 
 .ident { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .ident-text { min-width: 0; }
-.title { font-size: 12.5px; font-weight: 650; letter-spacing: -0.01em; }
+.title {
+  font: 500 14px/1.2 var(--serif);
+  letter-spacing: -0.01em;
+}
 .sub {
   font: 10.5px/1.4 var(--mono);
   color: var(--fg-mute);
@@ -101,10 +112,16 @@ body {
 }
 .glyph::after {
   content: '';
-  position: absolute; inset: 6px;
-  border-radius: 3px;
+  position: absolute; inset: 5px;
   background: var(--accent);
-  transition: transform .3s ease;
+  transition: transform .35s cubic-bezier(.34, 1.56, .64, 1);
+  /* tia sang 8 canh */
+  clip-path: polygon(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%);
+}
+body.busy .glyph::after { animation: twinkle 1.6s ease-in-out infinite; }
+@keyframes twinkle {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  50%      { transform: rotate(180deg) scale(.72); }
 }
 body.busy .glyph::before {
   content: '';
@@ -115,7 +132,6 @@ body.busy .glyph::before {
   border-right-color: var(--accent);
   animation: spin .9s linear infinite;
 }
-body.busy .glyph::after { transform: scale(.6); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .topbar-actions { display: flex; align-items: center; gap: 6px; flex: none; }
@@ -169,10 +185,13 @@ button:disabled { opacity: .45; cursor: default; }
 .tabs {
   display: flex; gap: 2px; padding: 0 8px;
   border-bottom: 1px solid var(--line); background: var(--bg);
+  /* 5 tab khong vua panel hep — cho truot ngang thay vi cat cut */
+  overflow-x: auto; scrollbar-width: none; flex: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tabs button {
-  border: 0; background: none; padding: 9px 9px 8px;
-  color: var(--fg-mute); font-size: 12px;
+  border: 0; background: none; padding: 9px 7px 8px;
+  color: var(--fg-mute); font-size: 12px; white-space: nowrap; flex: none;
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
 .tabs button:hover { color: var(--fg-dim); }
@@ -458,3 +477,96 @@ button:disabled { opacity: .45; cursor: default; }
   font: 10.5px/1.6 var(--mono); color: var(--fg-dim);
   white-space: pre; word-break: normal;
 }
+
+/* ============================================================== animations */
+
+/* Ba cham nhay — dung khi agent "dang nghi", giong con tro dang go */
+.dots { display: inline-flex; gap: 3px; margin-left: 5px; vertical-align: middle; }
+.dots i {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: var(--accent); opacity: .35;
+  animation: blink 1.25s ease-in-out infinite;
+}
+.dots i:nth-child(2) { animation-delay: .18s; }
+.dots i:nth-child(3) { animation-delay: .36s; }
+@keyframes blink {
+  0%, 60%, 100% { opacity: .25; transform: translateY(0); }
+  30%           { opacity: 1;   transform: translateY(-2px); }
+}
+
+/* Vet sang chay qua — dung cho khung xuong khi dang tai */
+.skel { display: flex; flex-direction: column; gap: 6px; }
+.skel-row {
+  height: 58px; border-radius: var(--r);
+  border: 1px solid var(--line-soft); background: var(--surface);
+  position: relative; overflow: hidden;
+}
+.skel-row::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 9%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: sweep 1.4s ease-in-out infinite;
+}
+.skel-row:nth-child(2)::after { animation-delay: .1s; }
+.skel-row:nth-child(3)::after { animation-delay: .2s; }
+.skel-row:nth-child(4)::after { animation-delay: .3s; }
+.skel-row:nth-child(5)::after { animation-delay: .4s; }
+@keyframes sweep { to { transform: translateX(100%); } }
+
+/* Vach ray cua dong hoat dong tu ve dan xuong */
+.stream::before { animation: growRail .5s ease both; transform-origin: top; }
+@keyframes growRail { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+/* Vong tron lan toa quanh buoc dang chay */
+.ev.run .dot { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); animation: halo 1.6s ease-out infinite; }
+@keyframes halo {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  70%  { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Tool call hien ra lan luot chu khong bup mot phat */
+.call { animation: slideIn .24s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes slideIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+
+/* Dau tich ve xong thi nay mot cai */
+.ev.ok .dot, .ev.err .dot { animation: pop .3s cubic-bezier(.34, 1.56, .64, 1) both; }
+@keyframes pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
+
+/* Nut bam co phan hoi */
+.btn:active:not(:disabled), .chip.act:active, .send:active:not(:disabled) { transform: scale(.97); }
+.btn, .chip.act, .send, .pill { transition: transform .09s ease, border-color .15s ease, background .15s ease; }
+
+/* Bang goi y bo nho tho nhe */
+.recall { animation: breathe 4s ease-in-out infinite; }
+@keyframes breathe {
+  0%, 100% { border-color: var(--accent-line); }
+  50%      { border-color: var(--accent); }
+}
+
+/* ------------------------------------------------------------ nguon du lieu */
+
+.src {
+  flex: none; padding: 1px 6px; border-radius: 4px;
+  font: 9.5px/1.6 var(--mono); letter-spacing: .02em;
+  border: 1px solid transparent;
+}
+.src.profile  { background: var(--ok-soft);     color: var(--ok);     border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.src.request,
+.src.goal     { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+.src.page     { background: var(--surface-2);   color: var(--fg-dim); border-color: var(--line); }
+.src.invented { background: var(--err-soft);    color: var(--err);    border-color: color-mix(in srgb, var(--err) 30%, transparent); }
+
+/* --------------------------------------------------------------- ho so tab */
+
+.profile-box {
+  width: 100%; min-height: 190px; resize: vertical;
+  font: 12px/1.7 var(--mono); color: var(--fg);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 10px 12px;
+}
+.profile-box:focus { outline: none; border-color: var(--accent); }
+.profile-actions { display: flex; gap: 6px; margin-top: 8px; }
+.saved-flash { color: var(--ok); font-size: 11px; align-self: center; opacity: 0; }
+.saved-flash.on { animation: fade 1.8s ease both; }
+@keyframes fade { 0% { opacity: 0; } 15%, 60% { opacity: 1; } 100% { opacity: 0; } }
