@@ -418,3 +418,43 @@ button:disabled { opacity: .45; cursor: default; }
 }
 .ask-input:focus { outline: none; border-color: var(--accent); }
 .ask-row { display: flex; gap: 6px; margin-top: 10px; }
+
+/* ------------------------------------------------------------- mode switch */
+
+.modes {
+  display: flex; gap: 2px; margin-bottom: 7px; padding: 2px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 999px; width: fit-content;
+}
+.modes button {
+  border: 0; background: none; color: var(--fg-mute);
+  padding: 4px 12px; border-radius: 999px; font-size: 11.5px;
+}
+.modes button.on { background: var(--bg); color: var(--fg); font-weight: 600; }
+
+.send.stop { background: var(--err); color: #fff; }
+
+/* ------------------------------------------------------------- tool calls */
+
+.calls { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
+.call {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 4px 7px; border-radius: 6px;
+  background: var(--bg); border: 1px solid var(--line-soft);
+  font: 11px/1.5 var(--mono);
+}
+.call .t { color: var(--accent); font-weight: 600; flex: none; }
+.call .a { color: var(--fg-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call .s { flex: none; font-weight: 700; }
+.call.ok .s { color: var(--ok); }
+.call.err { border-color: var(--err); }
+.call.err .s, .call.err .a { color: var(--err); }
+
+.thought { font-style: italic; color: var(--fg-dim); }
+
+.mapdump {
+  margin-top: 6px; padding: 8px 9px; max-height: 260px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--r);
+  font: 10.5px/1.6 var(--mono); color: var(--fg-dim);
+  white-space: pre; word-break: normal;
+}

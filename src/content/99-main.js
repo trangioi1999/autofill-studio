@@ -19,6 +19,26 @@
 
     AF_CONTEXT: () => ({ ok: true, context: AF.Scanner.pageContext() }),
 
+    /* ------------------------------------------------------------- agent */
+
+    AF_SNAPSHOT: (msg) => ({
+      ok: true,
+      nodes: AF.Snapshot.capture({ max: msg.max || 150, interactiveOnly: !!msg.interactiveOnly }),
+      state: AF.Snapshot.pageState(),
+    }),
+
+    AF_READ: (msg) => ({ ok: true, text: AF.Snapshot.readText(msg.query) }),
+
+    AF_WAIT_TEXT: async (msg) => ({
+      ok: await AF.Snapshot.waitForText(msg.text || '', msg.timeout || 8000),
+    }),
+
+    AF_SCROLL_PAGE: (msg) => {
+      const by = msg.direction === 'up' ? -Math.round(innerHeight * 0.8) : Math.round(innerHeight * 0.8);
+      window.scrollBy({ top: by, behavior: 'instant' });
+      return { ok: true, scrollY: Math.round(window.scrollY) };
+    },
+
     AF_RUN: async (msg) => {
       const results = await AF.Actions.runPlan(msg.steps || [], msg.options || {});
       return { ok: true, results };

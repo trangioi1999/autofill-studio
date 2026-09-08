@@ -2,10 +2,16 @@
 
 Extension Chrome (MV3) tự điền dữ liệu vào **bất kỳ form nào trên bất kỳ trang web nào**, bằng AI. Bên trong là một **locator engine kiểu Playwright** và một **overlay/inspector kiểu Chrome DevTools**.
 
-Điền một lần bằng AI, những lần sau lấy lại từ **bộ nhớ theo màn hình** — không gọi AI, không tốn token.
+Ba chế độ, chọn theo việc:
+
+| | Dùng khi | Chi phí |
+|---|---|---|
+| **Điền form** | Một form, một màn hình | 1 lần gọi AI |
+| **Agent** | Nhiều bước, nhiều trang — bấm, điều hướng, chờ, đọc, rồi điền | 1 lần gọi AI **mỗi lượt** |
+| **Bộ nhớ** | Màn hình đã từng điền | 0 — không gọi AI |
 
 <p align="center">
-  <img src="docs/panel-activity.png" width="320" alt="Dòng hoạt động của agent" />
+  <img src="docs/panel-agent.png" width="320" alt="Agent chạy tool" />
   <img src="docs/panel-memory.png" width="320" alt="Bộ nhớ theo màn hình" />
 </p>
 
@@ -91,6 +97,34 @@ kiro whoami         # kiểm tra
 
 ---
 
+## Chế độ Agent
+
+Giống cách Playwright MCP hay Claude điều khiển trình duyệt: model **không thấy DOM**, nó thấy một bản đồ phẳng của trang, mỗi dòng một element kèm ref.
+
+```
+e1   textbox   "Họ và tên" *
+e2   textbox   "Email" * = "a@example.com"
+e3   combobox  "Tỉnh / Thành phố" = "Đà Nẵng"
+e4   checkbox  "Tôi đồng ý với điều khoản" *
+e5   button    "Tiếp tục"
+e6   link      "Điều khoản" -> /terms
+```
+
+Mỗi lượt model trả về một nhóm hành động, extension chạy, **chụp lại trang**, đưa bản đồ mới. Lặp đến khi xong.
+
+**Công cụ:** `fill` `type` `select` `check` `radio` `upload` `click` `press` `scroll` `navigate` `back` `wait` `read`
+
+**Bốn thứ giữ cho nó không chạy loạn:**
+
+1. **Ref đánh số lại sau mỗi lần chụp.** Model không giữ được tham chiếu cũ qua lượt — không thể click nhầm thứ đã biến mất. Ref không có thật thì báo lỗi vào lịch sử chứ không crash.
+2. **Hành động làm trang đổi thì cắt lượt ngay.** `click`/`navigate`/`back`/`press` thành công là dừng, chụp lại. Mọi hành động xếp sau trong cùng lượt bị bỏ — vì chúng được nghĩ ra dựa trên trang cũ.
+3. **Trần số lượt** (mặc định 12, đổi trong Cài đặt) và **nút dừng** ăn ngay sau hành động đang chạy.
+4. **Không tự bấm nút gây hậu quả** — thanh toán, đặt hàng, chuyển tiền, xoá vĩnh viễn, gửi đơn — trừ khi mục tiêu bạn viết ra nói rõ. Gặp captcha thì báo `blocked` chứ không tìm cách vượt.
+
+Nút **Bản đồ** ở thanh dưới in ra đúng cái model sẽ đọc — tiện khi nó làm sai và bạn muốn biết vì sao.
+
+---
+
 ## Bộ nhớ theo màn hình
 
 Điền form bằng AI tốn một lần gọi model. Lần thứ hai vào đúng màn hình đó thì không cần nữa.
@@ -118,7 +152,7 @@ Tab **Bộ nhớ** trong side panel: lưu thủ công nhiều bản cho cùng m�
 
 ---
 
-## Hai chế độ chạy
+## Hai cách gửi event: DOM và CDP
 
 **DOM** (mặc định) — nhanh, không hiện thanh cảnh báo. Đủ cho hầu hết trang.
 
@@ -140,7 +174,7 @@ Mở DevTools → tab **Autofill Studio**. Đây là phần "giống Playwright 
 ## Luồng hoạt động
 
 ```
-Side panel: nhập yêu cầu
+Chế độ Điền form — side panel: nhập yêu cầu
       ↓
 Service worker: liệt kê mọi frame → inject content script → quét field
       ↓  (deep scan: mở từng dropdown custom để đọc option thật)
@@ -151,6 +185,22 @@ Plan hiện ra: sửa được từng giá trị trước khi chạy
 Action engine: DOM hoặc CDP, auto-wait + actionability check từng bước
       ↓
 Kết quả: xanh/đỏ từng field, log chi tiết
+```
+
+Chế độ Agent thì lặp:
+
+```
+mục tiêu
+   ↓
+┌─→ chụp bản đồ trang (mọi frame) → đánh số ref e1..eN
+│      ↓
+│  model chọn nhóm hành động
+│      ↓
+│  chạy — dừng ngay sau hành động làm trang đổi
+│      ↓
+└── chưa xong? lặp lại (tối đa N lượt)
+       ↓
+    done / blocked / hết lượt
 ```
 
 Có bộ nhớ rồi thì đường đi ngắn hơn hẳn:
@@ -187,9 +237,11 @@ src/
                20-scanner.js      nhận diện field
                30-actions.js      fill/select/check/upload/click
                40-picker.js       overlay + element picker
+               50-snapshot.js     bản đồ trang cho agent (ref + role + value)
                99-main.js         message bridge
   providers/   gemini · anthropic · openai · chromeai · bridge
-  lib/         prompt.js   system prompt + schema
+  lib/         agent.js    vòng lặp agent: tool, prompt, ref map
+               prompt.js   system prompt + schema
                storage.js  cài đặt
                screen.js   nhận diện màn hình + chấm điểm khớp field
                memory.js   kho bản lưu theo màn hình
@@ -207,3 +259,7 @@ testpage/           form thử: Material select, multi-select, shadow DOM, ifram
 **Bộ nhớ theo màn hình** — test lưu/ghép với `chrome.storage` giả lập: lọc đúng 4/8 ô (bỏ password, OTP, ô rỗng, checkbox chưa tick), gom `/apply/999` với `/apply/12345` về một khoá, ghép lại đủ 4 ô sau khi selector đổi và thứ tự đảo, checkbox trả về boolean, và ghép **0 ô** khi thả vào một form không liên quan.
 
 **Bridge** — `/health` và `/v1/complete` chạy thật, xác nhận `kiro` và `q` cùng trỏ về một backend và báo lỗi rõ khi chưa cài CLI.
+
+**Agent** — chạy `service-worker.js` thật trong Node với `chrome.*` giả lập và một "model" HTTP trả JSON theo kịch bản, trên một trang 2 bước: đi hết 2 bước và kết thúc `done`; dừng đúng sau `click` nên hành động xếp sau bị bỏ; ref không tồn tại báo lỗi chứ không crash; lượt 2 nhận bản đồ mới + lịch sử lượt 1; không tự bấm "Gửi hồ sơ". Nút dừng trả `stopped` giữa chừng, trần lượt trả `maxsteps`.
+
+**Bản đồ trang** — `50-snapshot.js` chạy trên `testpage/index.html` thật: đọc đúng 18 element gồm cả shadow DOM, và sau khi hành động thì phản ánh đúng giá trị của mat-select, multi-select, native select, radio, checkbox — không nhầm placeholder (`-- Chọn --`, `Chọn...`) thành giá trị.

@@ -24,6 +24,8 @@ const state = {
   planSource: 'ai',
   filter: '',
   busy: false,
+  mode: 'fill', // 'fill' = quet & dien mot phat · 'agent' = vong lap dieu khien
+  agentRunning: false,
 };
 
 const send = (msg) => chrome.runtime.sendMessage({ ...msg, tabId: msg.tabId ?? state.tabId });
@@ -33,6 +35,12 @@ function setBusy(on) {
   document.body.classList.toggle('busy', on);
   $('#btn-run').disabled = on;
   $('#btn-scan').disabled = on;
+}
+
+function setAgentRunning(on) {
+  state.agentRunning = on;
+  $('#btn-stop').classList.toggle('hide', !on);
+  $('#btn-run').classList.toggle('hide', on);
 }
 
 /* ------------------------------------------------------------------ stream */
@@ -106,6 +114,20 @@ function askInline(label, value = '') {
     input.focus();
     input.select();
   });
+}
+
+/** Mot dong tool call trong the cua luot agent. */
+function callRow(a) {
+  const row = el('div', `call ${a.ok ? 'ok' : 'err'}`);
+  const arg = [a.target, a.value != null && a.value !== '' ? `"${a.value}"` : '']
+    .filter(Boolean)
+    .join(' ');
+  row.append(
+    el('span', 't', a.tool),
+    el('span', 'a', a.error ? `${arg} — ${a.error}` : a.note ? `${arg} ${a.note}`.trim() : arg),
+    el('span', 's', a.ok ? '✓' : '✕')
+  );
+  return row;
 }
 
 let toastTimer;
@@ -486,6 +508,8 @@ async function previewSnapshot(id) {
 
 /* ------------------------------------------------------- su kien tu background */
 
+let currentCalls = null;
+
 chrome.runtime.onMessage.addListener((m) => {
   if (m?.type !== 'AF_EVENT') return;
 
@@ -548,6 +572,49 @@ chrome.runtime.onMessage.addListener((m) => {
     toast(`${m.ok}/${m.total} o`, all ? 'ok' : 'err');
   }
 
+  /* ------------------------------------------------------------- agent */
+
+  if (m.phase === 'agent-start') {
+    setAgentRunning(true);
+    ev(`Agent nhan muc tieu: ${m.goal || '(khong co)'}`, { kind: 'idle', detail: `Toi da ${m.max} luot` });
+  }
+
+  if (m.phase === 'agent-look') ev(`Luot ${m.step}/${m.max} — dang nhin trang...`);
+
+  if (m.phase === 'agent-looked') {
+    finishEv();
+    ev(`Doc duoc ${m.count} element`, { kind: 'ok', detail: m.title || m.url || '' });
+  }
+
+  if (m.phase === 'agent-think') ev('Dang nghi...');
+
+  if (m.phase === 'agent-thought') {
+    finishEv();
+    const card = el('div', 'card');
+    if (m.thought) card.append(el('div', 'thought', m.thought));
+    const calls = el('div', 'calls');
+    card.append(calls);
+    const node = ev(`Chon ${m.count} hanh dong`, { kind: 'ok', ms: m.ms || null, card });
+    node.dataset.turn = '1';
+    currentCalls = calls;
+  }
+
+  if (m.phase === 'agent-act' && currentCalls) currentCalls.append(callRow(m.action));
+
+  if (m.phase === 'agent-end') {
+    setAgentRunning(false);
+    currentCalls = null;
+    const kind = m.status === 'done' ? 'ok' : 'err';
+    const label = {
+      done: 'Agent hoan thanh muc tieu',
+      blocked: 'Agent dung lai',
+      stopped: 'Da dung theo yeu cau',
+      maxsteps: 'Het so luot cho phep',
+    }[m.status] || m.status;
+    ev(`${label} — sau ${m.steps} luot`, { kind, detail: m.summary || '' });
+    toast(label, kind);
+  }
+
   if (m.phase === 'saved') {
     ev(`Da ghi nho man hinh nay (${m.snapshot?.count || 0} o)`, { kind: 'ok' });
     refreshMemory();
@@ -577,9 +644,38 @@ $('#prompt').addEventListener('keydown', (e) => {
   }
 });
 
+document.querySelectorAll('.modes button').forEach((b) => {
+  b.onclick = () => {
+    state.mode = b.dataset.mode;
+    document.querySelectorAll('.modes button').forEach((x) => x.classList.toggle('on', x === b));
+    $('#prompt').placeholder =
+      state.mode === 'agent'
+        ? 'Muc tieu cho agent. VD: tim viec Angular o TP.HCM roi dien don ung tuyen dau tien'
+        : 'Vi du: dien don ung tuyen Senior Angular Dev, 6 nam kinh nghiem, o TP.HCM';
+  };
+});
+
 $('#btn-run').onclick = async () => {
   const request = $('#prompt').value.trim();
   switchView('run');
+
+  if (state.mode === 'agent') {
+    if (!request) return toast('Agent can mot muc tieu cu the', 'err');
+    setBusy(true);
+    try {
+      const r = await send({ type: 'AF_AGENT_RUN', goal: request });
+      if (r?.error) throw new Error(r.error);
+    } catch (e) {
+      setAgentRunning(false);
+      finishEv('err', '✕');
+      ev('Loi: ' + e.message, { kind: 'err' });
+      toast(e.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+    return;
+  }
+
   setBusy(true);
   ev(request ? `Yeu cau: ${request}` : 'Dien toan bo form bang du lieu hop ly', { kind: 'idle' });
   try {
@@ -589,6 +685,29 @@ $('#btn-run').onclick = async () => {
     finishEv('err', '✕');
     ev('Loi: ' + e.message, { kind: 'err' });
     toast(e.message, 'err');
+  } finally {
+    setBusy(false);
+  }
+};
+
+$('#btn-stop').onclick = async () => {
+  await send({ type: 'AF_AGENT_STOP' });
+  toast('Dang dung agent sau hanh dong hien tai...', 'info');
+};
+
+$('#btn-map').onclick = async () => {
+  switchView('run');
+  setBusy(true);
+  ev('Dang chup ban do trang (dung cai ma model nhin thay)...');
+  try {
+    const r = await send({ type: 'AF_SNAPSHOT_TAB' });
+    if (!r?.ok) throw new Error(r?.error || 'that bai');
+    finishEv();
+    const card = el('div', 'mapdump', r.text);
+    ev(`Ban do: ${r.count} element co the tuong tac`, { kind: 'ok', card });
+  } catch (e) {
+    finishEv('err', '✕');
+    ev('Loi: ' + e.message, { kind: 'err' });
   } finally {
     setBusy(false);
   }

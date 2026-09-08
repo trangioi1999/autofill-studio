@@ -6,6 +6,10 @@ import { SYSTEM_PROMPT, PLAN_SCHEMA, buildUserPrompt, planToSteps } from '../lib
 import { complete, testProvider, geminiOAuthLogin, geminiOAuthLogout, chromeaiAvailability, bridgeHealth, PROVIDERS } from '../providers/index.js';
 import * as CDP from './cdp.js';
 import * as Mem from '../lib/memory.js';
+import {
+  AGENT_SYSTEM, AGENT_SCHEMA, MAX_STEPS_DEFAULT, MUTATING,
+  renderSnapshot, renderState, buildAgentPrompt, compactHistory, actionToStep,
+} from '../lib/agent.js';
 import { screenKey } from '../lib/screen.js';
 
 /* ------------------------------------------------------------------ setup */
@@ -68,6 +72,7 @@ async function ensureInjected(tabId, frameId) {
         'src/content/20-scanner.js',
         'src/content/30-actions.js',
         'src/content/40-picker.js',
+        'src/content/50-snapshot.js',
         'src/content/99-main.js',
       ],
     });
@@ -245,6 +250,206 @@ async function memApply({ tabId, id }) {
   return { ok: okCount, total: results.length, matched, missing, results };
 }
 
+/* ------------------------------------------------------------------ agent */
+
+const agentStop = new Set(); // tabId dang duoc yeu cau dung giua chung
+
+/** Chup ban do trang tren moi frame. */
+async function snapshotTab(tabId) {
+  const frames = await listFrames(tabId);
+  const out = [];
+  let state = null;
+  for (const f of frames) {
+    if (!(await ensureInjected(tabId, f.frameId))) continue;
+    const r = await ask(tabId, f.frameId, { type: 'AF_SNAPSHOT' });
+    if (!r || !r.ok) continue;
+    if (f.frameId === 0 || !state) state = r.state;
+    if (r.nodes?.length) out.push({ frameId: f.frameId, url: f.url, nodes: r.nodes });
+  }
+  return { frames: out, state: state || { url: '', title: '' } };
+}
+
+/** Cho trang tai xong sau khi dieu huong. */
+function waitForTabLoad(tabId, timeout = 15000) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      chrome.tabs.onUpdated.removeListener(onUpd);
+      clearTimeout(timer);
+      resolve(v);
+    };
+    const onUpd = (id, info) => {
+      if (id === tabId && info.status === 'complete') setTimeout(() => finish(true), 350);
+    };
+    const timer = setTimeout(() => finish(false), timeout);
+    chrome.tabs.onUpdated.addListener(onUpd);
+  });
+}
+
+/** Chay mot hanh dong khong gan voi element cu the. */
+async function runGlobalAction(tabId, a) {
+  switch (a.tool) {
+    case 'navigate': {
+      const url = String(a.url || '');
+      if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'Chi cho phep dieu huong toi http/https' };
+      await chrome.tabs.update(tabId, { url });
+      await waitForTabLoad(tabId);
+      return { ok: true, note: url };
+    }
+    case 'back':
+      try {
+        await chrome.tabs.goBack(tabId);
+        await waitForTabLoad(tabId);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    case 'scroll': {
+      const r = await ask(tabId, 0, { type: 'AF_SCROLL_PAGE', direction: a.direction || 'down' });
+      return { ok: !!r?.ok, note: `scrollY=${r?.scrollY ?? '?'}` };
+    }
+    case 'wait': {
+      if (a.text) {
+        const r = await ask(tabId, 0, { type: 'AF_WAIT_TEXT', text: a.text, timeout: 8000 });
+        return r?.ok ? { ok: true, note: `thay "${a.text}"` } : { ok: false, error: `khong thay "${a.text}" sau 8s` };
+      }
+      await new Promise((res) => setTimeout(res, Math.min(Math.max(a.ms || 800, 100), 10000)));
+      return { ok: true };
+    }
+    case 'read': {
+      const r = await ask(tabId, 0, { type: 'AF_READ', query: a.query || '' });
+      return { ok: !!r?.ok, note: (r?.text || '').slice(0, 900) };
+    }
+    default:
+      return { ok: false, error: `khong ho tro tool "${a.tool}"` };
+  }
+}
+
+/**
+ * Chay danh sach hanh dong cua mot luot. Dung ngay sau hanh dong lam trang doi
+ * de agent duoc nhin ban do moi truoc khi quyet dinh tiep.
+ */
+async function runActions(tabId, actions, refMap, emit) {
+  const results = [];
+
+  for (const a of actions) {
+    if (agentStop.has(tabId)) break;
+
+    let r;
+    let target = null;
+
+    if (['navigate', 'back', 'scroll', 'wait', 'read'].includes(a.tool)) {
+      r = await runGlobalAction(tabId, a);
+    } else {
+      target = refMap.get(String(a.ref || ''));
+      if (!target) {
+        r = { ok: false, error: `ref "${a.ref}" khong co trong ban do luot nay` };
+      } else {
+        const step = actionToStep(a, target);
+        if (!step) r = { ok: false, error: `khong ho tro tool "${a.tool}"` };
+        else {
+          const [out] = await runPlan({ tabId, steps: [step] });
+          r = { ok: !!out?.ok, error: out?.error || '' };
+        }
+      }
+    }
+
+    const entry = {
+      tool: a.tool,
+      target: target?.name || a.ref || a.url || a.text || a.direction || '',
+      value: a.value,
+      ok: !!r.ok,
+      error: r.error || '',
+      note: r.note || '',
+    };
+    results.push(entry);
+    emit({ phase: 'agent-act', action: entry });
+
+    if (r.ok && MUTATING.has(a.tool)) {
+      await new Promise((res) => setTimeout(res, 500));
+      break; // trang co the da doi — phai chup lai
+    }
+  }
+
+  return results;
+}
+
+/** Vong lap chinh: nhin -> nghi -> lam -> lap lai. */
+async function runAgent({ tabId, goal, maxSteps }) {
+  const settings = await getSettings();
+  const max = Math.min(Math.max(maxSteps || settings.agentMaxSteps || MAX_STEPS_DEFAULT, 1), 40);
+  agentStop.delete(tabId);
+
+  const emit = (e) => chrome.runtime.sendMessage({ type: 'AF_EVENT', ...e }).catch(() => {});
+  const turns = [];
+  const finish = (status, summary, step) => {
+    emit({ phase: 'agent-end', status, summary, steps: step });
+    return { status, summary, steps: step, turns };
+  };
+
+  emit({ phase: 'agent-start', goal, max });
+
+  for (let step = 1; step <= max; step++) {
+    if (agentStop.has(tabId)) return finish('stopped', 'Nguoi dung da dung agent', step - 1);
+
+    emit({ phase: 'agent-look', step, max });
+    const snap = await snapshotTab(tabId);
+    const { text: map, refMap, count } = renderSnapshot(snap.frames);
+    emit({ phase: 'agent-looked', step, count, url: snap.state.url, title: snap.state.title });
+
+    if (!count) return finish('blocked', 'Khong doc duoc element nao tren trang nay', step);
+
+    const user = buildAgentPrompt({
+      goal,
+      persona: settings.persona,
+      language: settings.language,
+      state: renderState(snap.state),
+      map,
+      history: compactHistory(turns),
+      step,
+      maxSteps: max,
+    });
+
+    emit({ phase: 'agent-think', step });
+    const t0 = Date.now();
+    let plan;
+    try {
+      const res = await complete({
+        settings,
+        system: AGENT_SYSTEM,
+        user,
+        schema: settings.provider === 'chromeai' ? null : AGENT_SCHEMA,
+      });
+      plan = res.json || {};
+    } catch (e) {
+      return finish('blocked', `Provider loi: ${e.message}`, step);
+    }
+
+    const actions = Array.isArray(plan.actions) ? plan.actions : [];
+    emit({
+      phase: 'agent-thought',
+      step,
+      thought: plan.thought || '',
+      status: plan.status,
+      count: actions.length,
+      ms: Date.now() - t0,
+    });
+
+    const results = await runActions(tabId, actions, refMap, emit);
+    turns.push({ thought: plan.thought, results });
+
+    if (plan.status === 'done') return finish('done', plan.summary || 'Da xong', step);
+    if (plan.status === 'blocked') return finish('blocked', plan.summary || 'Khong the di tiep', step);
+    if (agentStop.has(tabId)) return finish('stopped', 'Nguoi dung da dung agent', step);
+    // Model bao con viec nhung khong lam gi -> tranh lap vo han
+    if (!actions.length) return finish('blocked', 'Model khong de xuat hanh dong nao', step);
+  }
+
+  return finish('maxsteps', `Het ${max} luot ma chua xong. Tang so luot trong Cai dat neu can.`, max);
+}
+
 /* ------------------------------------------------------------- full flow */
 
 async function autofill({ tabId, request, onEvent }) {
@@ -358,6 +563,17 @@ const routes = {
   AF_CDP_DETACH: async (m) => ({ ok: await CDP.detach(m.tabId) }),
   AF_CDP_STATUS: (m) => ({ attached: CDP.isAttached(m.tabId) }),
   AF_SCREENSHOT: async (m) => ({ ok: true, dataUrl: await CDP.screenshot(m.tabId) }),
+
+  AF_AGENT_RUN: (m) => runAgent(m),
+  AF_AGENT_STOP: (m) => {
+    agentStop.add(m.tabId);
+    return { ok: true };
+  },
+  AF_SNAPSHOT_TAB: async (m) => {
+    const snap = await snapshotTab(m.tabId);
+    const { text, count } = renderSnapshot(snap.frames);
+    return { ok: true, text, count, state: snap.state };
+  },
 
   AF_MEM_LIST: () => Mem.listSnapshots(),
   AF_MEM_FOR_TAB: async (m) => {

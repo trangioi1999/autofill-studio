@@ -50,6 +50,7 @@
         "src/content/20-scanner.js",
         "src/content/30-actions.js",
         "src/content/40-picker.js",
+        "src/content/50-snapshot.js",
         "src/content/99-main.js"
       ],
       "css": ["src/content/overlay.css"]

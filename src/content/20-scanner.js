@@ -135,16 +135,26 @@
    * rong; gia tri that nam o phan text cua trigger. Doc no de con luu lai
    * duoc vao bo nho man hinh.
    */
+  // Cac glyph mui ten / dau x cua dropdown, khong phai gia tri
+  const CHROME_GLYPHS = /[▾▴▼▲⌄⌃✕×✖⨯]|arrow_drop_down|expand_more/gi;
+
+  // "Chon...", "-- Chon --", "Select an option", "Vui long chon" ... la goi y,
+  // khong phai gia tri nguoi dung da chon.
+  const PLACEHOLDER_TEXT = /^(-+\s*)?(chon|vui long chon|select|choose|please select|none|khong chon)\b[\s.…-]*$/i;
+
   const triggerText = (el) => {
     const sel = [
       '.mat-mdc-select-value-text',
       '.mat-select-value-text',
+      '.mat-mdc-select-trigger',
+      '.mat-select-trigger',
       '.ng-value-label',
       '.p-dropdown-label',
       '.p-multiselect-label',
       '.ant-select-selection-item',
       '.ant-select-selection-item-content',
       '[class*="select"][class*="value"]',
+      '[class*="value"]',
     ].join(',');
     const node = el.querySelector ? el.querySelector(sel) : null;
     let t = node ? AF.norm(node.textContent) : '';
@@ -152,12 +162,20 @@
       const inner = el.querySelector('input');
       if (inner && inner.value) t = AF.norm(inner.value);
     }
-    if (!t) t = AF.norm(el.textContent).slice(0, 120);
+    if (!t) t = AF.norm(el.textContent);
+    t = AF.norm(t.replace(CHROME_GLYPHS, '')).slice(0, 200);
+
     // placeholder cua dropdown khong phai gia tri
     const ph = AF.norm(el.getAttribute?.('placeholder') || '');
     if (t && ph && AF.slug(t) === AF.slug(ph)) return '';
+    // nhieu widget khong dung thuoc tinh placeholder ma in thang chu goi y
+    if (PLACEHOLDER_TEXT.test(AF.slug(t))) return '';
+    // nhan cua chinh no cung khong phai gia tri
+    const name = AF.accessibleName(el);
+    if (t && name && AF.slug(t) === AF.slug(name)) return '';
     return t;
   };
+  AF.triggerText = triggerText;
 
   /* ------------------------------------------------------------- options */
 
@@ -238,8 +256,11 @@
     else if (kind === 'file') currentValue = el.files && el.files.length ? `${el.files.length} file` : '';
     else if (kind === 'combobox' || kind === 'multiselect-custom') currentValue = triggerText(el).slice(0, 400);
     else if (kind === 'select' || kind === 'multiselect') {
-      // Luu nhan cua option dang chon, de con so khop lai o lan sau
-      const chosen = [...(el.selectedOptions || [])].map((o) => AF.norm(o.textContent) || o.value);
+      // Luu nhan cua option dang chon, de con so khop lai o lan sau.
+      // Option placeholder ("-- Chon --", value rong) khong phai gia tri.
+      const chosen = [...(el.selectedOptions || [])]
+        .filter((o) => o.value !== '' && !o.disabled)
+        .map((o) => AF.norm(o.textContent) || o.value);
       currentValue = chosen.join(' | ').slice(0, 400);
     } else currentValue = AF.norm(el.value).slice(0, kind === 'textarea' ? 2000 : 400);
 
