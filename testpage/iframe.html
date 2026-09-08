@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Form trong iframe</title>
+    <style>
+      body { font: 13px/1.6 system-ui, sans-serif; padding: 12px; }
+      label { display: block; font-size: 12px; color: #666; margin: 8px 0 3px; }
+      input, select { width: 100%; padding: 7px 9px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
+    </style>
+  </head>
+  <body>
+    <strong>Thong tin thanh toan (iframe)</strong>
+    <label for="addr">Dia chi</label>
+    <input id="addr" name="address" placeholder="So nha, duong, phuong" />
+    <label for="cityI">Thanh pho</label>
+    <input id="cityI" name="city" />
+    <label for="zip">Ma buu chinh</label>
+    <input id="zip" name="zip" pattern="[0-9]{5,6}" />
+    <label for="ship">Phuong thuc giao</label>
+    <select id="ship" name="shipping">
+      <option value="">-- Chon --</option>
+      <option value="std">Tieu chuan</option>
+      <option value="fast">Nhanh</option>
+      <option value="pickup">Nhan tai cua hang</option>
+    </select>
+  </body>
+</html>

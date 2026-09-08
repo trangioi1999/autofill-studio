@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Autofill Studio</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="brand">
+        <span class="dot"></span>
+        <strong>AI Autofill</strong>
+      </div>
+      <div class="bar-right">
+        <button id="btn-cdp" class="chip" title="Che do CDP: gui event that su (trusted) qua chrome.debugger">DOM</button>
+        <span id="provider" class="chip muted">—</span>
+        <button id="btn-settings" class="icon" title="Cai dat">⚙</button>
+      </div>
+    </header>
+
+    <section class="pad">
+      <label class="lbl" for="prompt">Ban muon dien gi?</label>
+      <textarea
+        id="prompt"
+        rows="3"
+        placeholder="VD: Dien don ung tuyen vi tri Senior Angular Developer, 6 nam kinh nghiem, o TP.HCM"
+      ></textarea>
+
+      <div class="row gap">
+        <button id="btn-run" class="primary grow">Quet &amp; dien tu dong</button>
+        <button id="btn-scan" title="Chi quet, chua dien">Quet</button>
+      </div>
+      <div class="row gap">
+        <button id="btn-highlight" class="ghost">Danh dau field</button>
+        <button id="btn-pick" class="ghost">Chon element</button>
+        <button id="btn-clear" class="ghost">Xoa overlay</button>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button data-tab="fields" class="on">Fields <span id="c-fields" class="count">0</span></button>
+      <button data-tab="plan">Ke hoach <span id="c-plan" class="count">0</span></button>
+      <button data-tab="log">Log</button>
+    </nav>
+
+    <section id="tab-fields" class="panel">
+      <div class="filter">
+        <input id="q" type="search" placeholder="Loc theo nhan / ten / loai..." />
+      </div>
+      <div id="fields" class="list"></div>
+      <p class="empty" id="fields-empty">Bam <b>Quet</b> de tim cac o nhap lieu tren trang.</p>
+    </section>
+
+    <section id="tab-plan" class="panel hide">
+      <div id="plan" class="list"></div>
+      <p class="empty" id="plan-empty">Chua co ke hoach. Nhap yeu cau roi bam <b>Quet &amp; dien tu dong</b>.</p>
+      <div class="row gap sticky" id="plan-actions" style="display: none">
+        <button id="btn-apply" class="primary grow">Ap dung ke hoach</button>
+        <button id="btn-copy-plan" class="ghost">Copy JSON</button>
+      </div>
+    </section>
+
+    <section id="tab-log" class="panel hide">
+      <pre id="log" class="log"></pre>
+      <div class="row gap"><button id="btn-clearlog" class="ghost grow">Xoa log</button></div>
+    </section>
+
+    <div id="picked" class="picked hide"></div>
+
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Test form — Angular Material / Shadow DOM / iframe</title>
+    <style>
+      body { font: 14px/1.6 system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
+      h2 { margin-top: 28px; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
+      mat-form-field { display: block; margin: 12px 0; }
+      mat-label { display: block; font-size: 12px; color: #666; margin-bottom: 3px; }
+      input, textarea, select { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
+      .mat-mdc-select-trigger {
+        border: 1px solid #ccc; border-radius: 6px; padding: 8px 10px; cursor: pointer;
+        display: flex; justify-content: space-between; background: #fff;
+      }
+      .cdk-overlay-container { position: fixed; inset: 0; pointer-events: none; z-index: 1000; }
+      .cdk-overlay-pane {
+        position: absolute; background: #fff; border: 1px solid #ccc; border-radius: 6px;
+        box-shadow: 0 6px 20px rgba(0,0,0,.18); pointer-events: auto; max-height: 240px; overflow: auto; min-width: 220px;
+      }
+      mat-option { display: block; padding: 8px 12px; cursor: pointer; }
+      mat-option:hover { background: #f0eeff; }
+      mat-option[aria-selected="true"]::before { content: "✓ "; color: #7c5cff; }
+      .dropzone { border: 2px dashed #bbb; border-radius: 8px; padding: 22px; text-align: center; color: #777; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .out { background: #f6f5fb; border-radius: 8px; padding: 10px 12px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
+      iframe { width: 100%; height: 210px; border: 1px solid #ddd; border-radius: 8px; }
+      fieldset { border: 1px solid #ddd; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Form thu nghiem</h1>
+    <p>Trang nay mo phong cac ca kho: Angular Material select, multi-select, radio, file upload, dropzone, shadow DOM, iframe.</p>
+
+    <h2>Thong tin ca nhan</h2>
+    <form id="f1">
+      <mat-form-field class="mat-mdc-form-field">
+        <mat-label>Ho va ten</mat-label>
+        <input formcontrolname="fullName" id="fullName" placeholder="Nguyen Van A" required />
+      </mat-form-field>
+
+      <div class="row">
+        <mat-form-field class="mat-mdc-form-field">
+          <mat-label>Email</mat-label>
+          <input type="email" formcontrolname="email" id="email" required />
+        </mat-form-field>
+        <mat-form-field class="mat-mdc-form-field">
+          <mat-label>Dien thoai</mat-label>
+          <input type="tel" formcontrolname="phone" id="phone" />
+        </mat-form-field>
+      </div>
+
+      <mat-form-field class="mat-mdc-form-field">
+        <mat-label>Ngay sinh</mat-label>
+        <input type="date" formcontrolname="dob" id="dob" />
+      </mat-form-field>
+
+      <mat-form-field class="mat-mdc-form-field">
+        <mat-label>Gioi thieu ban than</mat-label>
+        <textarea rows="3" formcontrolname="bio" id="bio" maxlength="400"></textarea>
+        <small class="hint">Toi da 400 ky tu</small>
+      </mat-form-field>
+    </form>
+
+    <h2>Lua chon</h2>
+    <mat-form-field class="mat-mdc-form-field">
+      <mat-label>Tinh / Thanh pho</mat-label>
+      <mat-select id="city" role="combobox" aria-haspopup="listbox" data-options="TP. Ho Chi Minh,Ha Noi,Da Nang,Can Tho,Hai Phong,Binh Duong">
+        <div class="mat-mdc-select-trigger"><span class="val">Chon...</span><span>▾</span></div>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field class="mat-mdc-form-field">
+      <mat-label>Ky nang (chon nhieu)</mat-label>
+      <mat-select id="skills" multiple role="combobox" aria-haspopup="listbox"
+        data-options="Angular,React,Vue,Node.js,RxJS,NgRx,Nx,Module Federation,TypeScript,Playwright">
+        <div class="mat-mdc-select-trigger"><span class="val">Chon...</span><span>▾</span></div>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field class="mat-mdc-form-field">
+      <mat-label>Cap do</mat-label>
+      <select id="level">
+        <option value="">-- Chon --</option>
+        <option value="junior">Junior</option>
+        <option value="mid">Middle</option>
+        <option value="senior">Senior</option>
+        <option value="lead">Tech Lead</option>
+      </select>
+    </mat-form-field>
+
+    <fieldset>
+      <legend>Hinh thuc lam viec</legend>
+      <label><input type="radio" name="mode" value="onsite" /> Onsite</label>
+      <label><input type="radio" name="mode" value="hybrid" /> Hybrid</label>
+      <label><input type="radio" name="mode" value="remote" /> Remote</label>
+    </fieldset>
+
+    <p><label><input type="checkbox" id="agree" required /> Toi dong y voi dieu khoan</label></p>
+
+    <h2>Tep dinh kem</h2>
+    <label for="cv">CV (PDF)</label>
+    <input type="file" id="cv" accept=".pdf,.doc,.docx" />
+    <p></p>
+    <div class="dropzone" id="dz">Keo tha file vao day (dropzone khong co input)</div>
+
+    <h2>Shadow DOM</h2>
+    <my-widget></my-widget>
+
+    <h2>Iframe (cung origin)</h2>
+    <iframe src="iframe.html" title="Form trong iframe"></iframe>
+
+    <h2>Ket qua</h2>
+    <div class="out" id="out">(chua co)</div>
+    <p><button id="dump">Doc gia tri hien tai</button></p>
+
+    <div class="cdk-overlay-container" id="overlay"></div>
+
+    <script>
+      /* --- Mo phong mat-select cua Angular Material --- */
+      const overlay = document.getElementById('overlay');
+      let openFor = null;
+
+      function closePanel() {
+        overlay.innerHTML = '';
+        openFor = null;
+      }
+
+      document.querySelectorAll('mat-select').forEach((sel) => {
+        sel.selectedValues = [];
+        const trigger = sel.querySelector('.mat-mdc-select-trigger');
+        trigger.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (openFor === sel) return closePanel();
+          closePanel();
+          openFor = sel;
+          const pane = document.createElement('div');
+          pane.className = 'cdk-overlay-pane';
+          const list = document.createElement('div');
+          list.setAttribute('role', 'listbox');
+          if (sel.hasAttribute('multiple')) list.setAttribute('aria-multiselectable', 'true');
+          sel.dataset.options.split(',').forEach((label) => {
+            const o = document.createElement('mat-option');
+            o.setAttribute('role', 'option');
+            o.textContent = label;
+            o.setAttribute('aria-selected', sel.selectedValues.includes(label) ? 'true' : 'false');
+            o.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              if (sel.hasAttribute('multiple')) {
+                const i = sel.selectedValues.indexOf(label);
+                if (i >= 0) sel.selectedValues.splice(i, 1);
+                else sel.selectedValues.push(label);
+                o.setAttribute('aria-selected', sel.selectedValues.includes(label) ? 'true' : 'false');
+              } else {
+                sel.selectedValues = [label];
+                closePanel();
+              }
+              sel.querySelector('.val').textContent = sel.selectedValues.join(', ') || 'Chon...';
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            list.appendChild(o);
+          });
+          pane.appendChild(list);
+          const r = trigger.getBoundingClientRect();
+          pane.style.left = r.left + 'px';
+          pane.style.top = r.bottom + 4 + 'px';
+          pane.style.width = r.width + 'px';
+          overlay.appendChild(pane);
+        });
+      });
+
+      document.addEventListener('click', () => closePanel());
+      document.addEventListener('keydown', (e) => e.key === 'Escape' && closePanel());
+
+      /* --- Web component voi shadow DOM --- */
+      class MyWidget extends HTMLElement {
+        connectedCallback() {
+          const r = this.attachShadow({ mode: 'open' });
+          r.innerHTML = `
+            <style>
+              label{font-size:12px;color:#666;display:block;margin:8px 0 3px}
+              input,select{width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font:inherit}
+            </style>
+            <label for="company">Cong ty hien tai</label>
+            <input id="company" name="company" placeholder="Ten cong ty" />
+            <label for="country">Quoc gia</label>
+            <select id="country" name="country">
+              <option value="">-- Chon --</option>
+              <option value="vn">Viet Nam</option>
+              <option value="sg">Singapore</option>
+              <option value="jp">Nhat Ban</option>
+            </select>`;
+        }
+      }
+      customElements.define('my-widget', MyWidget);
+
+      /* --- Dropzone --- */
+      const dz = document.getElementById('dz');
+      dz.addEventListener('dragover', (e) => e.preventDefault());
+      dz.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const names = [...(e.dataTransfer?.files || [])].map((f) => f.name);
+        dz.textContent = names.length ? 'Da nhan: ' + names.join(', ') : 'Khong co file';
+      });
+
+      /* --- Dump --- */
+      document.getElementById('dump').addEventListener('click', () => {
+        const w = document.querySelector('my-widget').shadowRoot;
+        const data = {
+          fullName: fullName.value,
+          email: email.value,
+          phone: phone.value,
+          dob: dob.value,
+          bio: bio.value,
+          city: document.getElementById('city').selectedValues,
+          skills: document.getElementById('skills').selectedValues,
+          level: level.value,
+          mode: document.querySelector('input[name=mode]:checked')?.value || null,
+          agree: agree.checked,
+          cv: [...(document.getElementById('cv').files || [])].map((f) => f.name),
+          company: w.getElementById('company').value,
+          country: w.getElementById('country').value,
+        };
+        document.getElementById('out').textContent = JSON.stringify(data, null, 2);
+      });
+    </script>
+  </body>
+</html>

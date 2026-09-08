@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>AI Autofill Studio — Cai dat</title>
+    <link rel="stylesheet" href="../sidepanel/panel.css" />
+    <style>
+      body { max-width: 780px; margin: 0 auto; padding: 24px 20px 60px; display: block; }
+      h1 { font-size: 19px; margin: 0 0 4px; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 26px 0 10px; }
+      .card { border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; display: grid; gap: 12px; }
+      .field { display: grid; gap: 5px; }
+      .field label { font-size: 12px; font-weight: 600; }
+      .field .hint { font-size: 11px; color: var(--muted); }
+      input[type="password"], input[type="text"], input[type="url"], select, textarea {
+        width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line);
+        border-radius: 8px; background: var(--bg); color: var(--fg);
+      }
+      .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .inline { display: flex; align-items: center; gap: 8px; }
+      .inline input[type="checkbox"] { width: 16px; height: 16px; }
+      .prov { display: none; }
+      .prov.on { display: grid; gap: 12px; }
+      .status-line { font-size: 12px; padding: 8px 10px; border-radius: 8px; background: var(--chip); }
+      a { color: var(--brand); }
+      code { font: 11px ui-monospace, Menlo, monospace; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>AI Autofill Studio</h1>
+    <p class="hint" style="color: var(--muted); font-size: 12px">
+      Dien du lieu vao form tren bat ky trang web nao bang AI. Locator kieu Playwright, overlay kieu DevTools.
+    </p>
+
+    <h2>Nha cung cap AI</h2>
+    <div class="card">
+      <div class="field">
+        <label for="provider">Provider</label>
+        <select id="provider">
+          <option value="gemini">Google Gemini (API key hoac OAuth)</option>
+          <option value="anthropic">Anthropic Claude (API key)</option>
+          <option value="openai">OpenAI-compatible (OpenAI / OpenRouter / DeepSeek / LM Studio / gateway noi bo)</option>
+          <option value="chromeai">Chrome Built-in AI — Gemini Nano (offline, mien phi)</option>
+          <option value="bridge">Local Bridge (Claude CLI / Gemini CLI / Kiro / Ollama)</option>
+        </select>
+      </div>
+
+      <!-- Gemini -->
+      <div class="prov" data-prov="gemini">
+        <div class="field">
+          <label for="g-auth">Cach xac thuc</label>
+          <select id="g-auth">
+            <option value="apikey">API key (Google AI Studio)</option>
+            <option value="oauth">OAuth Google (Vertex AI)</option>
+          </select>
+        </div>
+        <div class="field" id="g-key-wrap">
+          <label for="g-key">Gemini API key</label>
+          <input id="g-key" type="password" placeholder="AIza..." autocomplete="off" />
+          <span class="hint">Lay tai <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a></span>
+        </div>
+        <div class="two" id="g-oauth-wrap" style="display: none">
+          <div class="field">
+            <label for="g-client">OAuth Client ID</label>
+            <input id="g-client" type="text" placeholder="xxx.apps.googleusercontent.com" />
+            <span class="hint">Tao OAuth client loai "Web application", redirect URI: <code id="redirect-uri"></code></span>
+          </div>
+          <div class="field">
+            <label for="g-project">Google Cloud Project ID</label>
+            <input id="g-project" type="text" placeholder="my-project-123" />
+          </div>
+          <div class="field">
+            <label for="g-location">Vertex location</label>
+            <input id="g-location" type="text" placeholder="us-central1" />
+          </div>
+          <div class="field" style="align-self: end">
+            <button id="btn-oauth" class="primary">Dang nhap Google</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="g-model">Model</label>
+          <input id="g-model" type="text" placeholder="gemini-2.5-flash" />
+        </div>
+      </div>
+
+      <!-- Anthropic -->
+      <div class="prov" data-prov="anthropic">
+        <div class="field">
+          <label for="a-key">Anthropic API key</label>
+          <input id="a-key" type="password" placeholder="sk-ant-..." autocomplete="off" />
+          <span class="hint">Lay tai <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>. Extension gui kem header <code>anthropic-dangerous-direct-browser-access</code>.</span>
+        </div>
+        <div class="two">
+          <div class="field">
+            <label for="a-model">Model</label>
+            <input id="a-model" type="text" placeholder="claude-sonnet-4-6" />
+          </div>
+          <div class="field">
+            <label for="a-base">Base URL</label>
+            <input id="a-base" type="url" placeholder="https://api.anthropic.com" />
+          </div>
+        </div>
+      </div>
+
+      <!-- OpenAI-compat -->
+      <div class="prov" data-prov="openai">
+        <div class="field">
+          <label for="o-base">Base URL</label>
+          <input id="o-base" type="url" placeholder="https://api.openai.com/v1" />
+          <span class="hint">
+            OpenRouter: <code>https://openrouter.ai/api/v1</code> ·
+            DeepSeek: <code>https://api.deepseek.com/v1</code> ·
+            LM Studio: <code>http://127.0.0.1:1234/v1</code> ·
+            Ollama: <code>http://127.0.0.1:11434/v1</code>
+          </span>
+        </div>
+        <div class="two">
+          <div class="field">
+            <label for="o-key">API key</label>
+            <input id="o-key" type="password" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="o-model">Model</label>
+            <input id="o-model" type="text" placeholder="gpt-4o-mini" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Chrome AI -->
+      <div class="prov" data-prov="chromeai">
+        <div class="status-line" id="chromeai-status">Dang kiem tra...</div>
+        <span class="hint">
+          Can Chrome 138+ va model Gemini Nano da tai. Neu bao <code>downloadable</code>, bam Test de Chrome bat dau tai (~2GB).
+          Che do nay chay hoan toan tren may, khong gui du lieu trang ra ngoai.
+        </span>
+      </div>
+
+      <!-- Bridge -->
+      <div class="prov" data-prov="bridge">
+        <div class="two">
+          <div class="field">
+            <label for="b-url">Bridge URL</label>
+            <input id="b-url" type="url" placeholder="http://127.0.0.1:8765" />
+          </div>
+          <div class="field">
+            <label for="b-model">Backend</label>
+            <input id="b-model" type="text" placeholder="claude | gemini | kiro | ollama:qwen2.5 | default" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="b-token">Token (tuy chon)</label>
+          <input id="b-token" type="password" autocomplete="off" />
+        </div>
+        <div class="status-line" id="bridge-status">Chua kiem tra.</div>
+        <span class="hint">
+          Chay <code>node bridge/server.mjs</code> trong thu muc extension. Bridge goi lai CLI ban da dang nhap san
+          (Claude Code, Gemini CLI, Kiro/Amazon Q) hoac Ollama — khong can dan API key vao trinh duyet.
+        </span>
+      </div>
+
+      <div class="inline">
+        <button id="btn-test" class="primary">Test ket noi</button>
+        <span id="test-result" class="hint"></span>
+      </div>
+    </div>
+
+    <h2>Ho so cua ban</h2>
+    <div class="card">
+      <div class="field">
+        <label for="persona">Du lieu mac dinh AI nen dung khi field khop</label>
+        <textarea id="persona" rows="7" placeholder="Ho ten: Tran Gioi
+Email: gioitv.dev@gmail.com
+Dien thoai: 09xxxxxxxx
+Dia chi: 123 Nguyen Hue, Quan 1, TP.HCM
+Cong ty: ...
+Chuc danh: Senior Frontend Developer"></textarea>
+        <span class="hint">De trong thi AI se tu bia du lieu hop ly theo ngu canh trang.</span>
+      </div>
+      <div class="field">
+        <label for="language">Ngon ngu noi dung dien</label>
+        <select id="language">
+          <option value="vi">Tieng Viet</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="auto">Theo ngon ngu trang</option>
+        </select>
+      </div>
+    </div>
+
+    <h2>Hanh vi</h2>
+    <div class="card">
+      <div class="inline">
+        <input type="checkbox" id="deepScan" />
+        <label for="deepScan">Quet sau — mo tung dropdown custom de doc danh sach lua chon that (cham hon, chinh xac hon)</label>
+      </div>
+      <div class="inline">
+        <input type="checkbox" id="cdpMode" />
+        <label for="cdpMode">Che do CDP — gui event that su qua chrome.debugger (Chrome hien thanh vang, nhung qua duoc trang phong thu chat)</label>
+      </div>
+      <div class="inline">
+        <input type="checkbox" id="stopOnError" />
+        <label for="stopOnError">Dung ngay khi 1 buoc that bai</label>
+      </div>
+      <div class="two">
+        <div class="field">
+          <label for="typeDelay">Do tre go phim (ms)</label>
+          <input id="typeDelay" type="text" placeholder="20" />
+        </div>
+        <div class="field">
+          <label for="maxFields">So field toi da gui cho AI</label>
+          <input id="maxFields" type="text" placeholder="120" />
+        </div>
+      </div>
+    </div>
+
+    <div class="inline" style="margin-top: 20px">
+      <button id="btn-save" class="primary">Luu</button>
+      <button id="btn-reset" class="ghost">Khoi phuc mac dinh</button>
+      <span id="save-result" class="hint"></span>
+    </div>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

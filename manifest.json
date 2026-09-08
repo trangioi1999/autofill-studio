@@ -1,0 +1,76 @@
+{
+  "manifest_version": 3,
+  "name": "AI Autofill Studio",
+  "version": "0.1.0",
+  "description": "Auto-fill bat ky form nao tren bat ky trang web nao bang AI. Locator engine kieu Playwright + DevTools panel + CDP trusted input.",
+  "minimum_chrome_version": "116",
+
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "sidePanel",
+    "webNavigation",
+    "debugger",
+    "contextMenus",
+    "identity"
+  ],
+
+  "optional_permissions": [],
+
+  "host_permissions": ["<all_urls>"],
+
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+
+  "side_panel": {
+    "default_path": "src/sidepanel/panel.html"
+  },
+
+  "devtools_page": "src/devtools/devtools.html",
+
+  "options_page": "src/options/options.html",
+
+  "action": {
+    "default_title": "AI Autofill Studio"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_idle",
+      "js": [
+        "src/content/00-util.js",
+        "src/content/10-locator.js",
+        "src/content/20-scanner.js",
+        "src/content/30-actions.js",
+        "src/content/40-picker.js",
+        "src/content/99-main.js"
+      ],
+      "css": ["src/content/overlay.css"]
+    }
+  ],
+
+  "commands": {
+    "run-autofill": {
+      "suggested_key": { "default": "Alt+Shift+F" },
+      "description": "Chay autofill voi prompt gan nhat"
+    },
+    "toggle-picker": {
+      "suggested_key": { "default": "Alt+Shift+P" },
+      "description": "Bat/tat che do chon element (giong DevTools inspect)"
+    }
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/overlay.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

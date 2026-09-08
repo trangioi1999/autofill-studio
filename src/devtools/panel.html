@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>AI Autofill — Inspector</title>
+    <link rel="stylesheet" href="../sidepanel/panel.css" />
+    <style>
+      body { display: block; padding: 0; }
+      .wrap { display: grid; grid-template-columns: 340px 1fr; height: 100vh; }
+      .left, .right { overflow: auto; padding: 10px 12px; }
+      .left { border-right: 1px solid var(--line); }
+      h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 7px; }
+      h3:first-child { margin-top: 0; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; font-size: 11px; position: sticky; top: 0; background: var(--bg); }
+      tr:hover td { background: var(--chip); cursor: pointer; }
+      .mono { font: 11px ui-monospace, Menlo, monospace; }
+      .badge { font: 10px ui-monospace, Menlo, monospace; background: var(--brand-soft); color: var(--brand); padding: 0 5px; border-radius: 4px; }
+      .res { font-size: 12px; padding: 7px 9px; border-radius: 8px; background: var(--chip); margin-top: 7px; }
+      .res.ok { color: var(--ok); }
+      .res.err { color: var(--err); }
+      input, select, textarea { width: 100%; font: inherit; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); }
+      .row2 { display: grid; grid-template-columns: 1fr auto; gap: 7px; }
+      .toolbar { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="left">
+        <div class="toolbar">
+          <button id="d-scan" class="primary">Quet</button>
+          <button id="d-highlight" class="ghost">Danh dau</button>
+          <button id="d-pick" class="ghost">Chon</button>
+          <button id="d-clear" class="ghost">Xoa</button>
+        </div>
+
+        <h3>Locator playground</h3>
+        <div class="row2">
+          <input id="d-loc" placeholder='role=textbox|name=Email  ·  css=#email  ·  //input[@id="email"]  ·  {"label":"Ho ten"}' />
+          <button id="d-resolve">Tim</button>
+        </div>
+        <div id="d-locres" class="res">Nhap locator roi bam Tim. Cu phap giong Playwright: <span class="mono">role= / label= / placeholder= / text= / testid= / css= / xpath=</span></div>
+
+        <h3>Chay thu 1 buoc</h3>
+        <div class="row2">
+          <select id="d-action">
+            <option value="fill">fill</option>
+            <option value="type">type</option>
+            <option value="select">select</option>
+            <option value="check">check</option>
+            <option value="radio">radio</option>
+            <option value="click">click</option>
+            <option value="press">press</option>
+            <option value="upload">upload</option>
+          </select>
+          <button id="d-run">Chay</button>
+        </div>
+        <input id="d-value" placeholder="Gia tri (multi-select ngan cach bang |)" style="margin-top: 7px" />
+        <div id="d-runres" class="res">Chon 1 dong trong bang ben phai (hoac tim bang locator) roi bam Chay.</div>
+
+        <h3>Muc tieu hien tai</h3>
+        <div id="d-target" class="res mono">(chua chon)</div>
+      </div>
+
+      <div class="right">
+        <div class="toolbar">
+          <input id="d-filter" placeholder="Loc field..." style="max-width: 260px" />
+          <span id="d-count" class="chip muted">0 field</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>#</th><th>Loai</th><th>Nhan</th><th>Ten</th><th>Lua chon</th><th>Selector</th></tr>
+          </thead>
+          <tbody id="d-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>
