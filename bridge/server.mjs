@@ -163,7 +163,12 @@ function run(cmd, args, input) {
         );
       }
       bin = process.env.ComSpec || 'cmd.exe';
-      argv = ['/d', '/s', '/c', [winQuote(cmd), ...args.map(winQuote)].join(' ')];
+      // Co /s cua cmd.exe cat dau nhay DAU va CUOI cua ca chuoi sau /c. Neu
+      // khong boc them mot cap nhay ngoai cung, `"x.cmd" "a" "b"` bien thanh
+      // `x.cmd" "a" "b` va cmd bao "is not recognized". Node (shell: true)
+      // cung lam dung nhu vay: /d /s /c "<lenh>".
+      const line = [winQuote(cmd), ...args.map(winQuote)].join(' ');
+      argv = ['/d', '/s', '/c', `"${line}"`];
       opts.windowsVerbatimArguments = true;
     }
 
