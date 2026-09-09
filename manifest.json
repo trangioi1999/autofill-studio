@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Autofill Studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Dien bat ky form nao tren bat ky trang web nao bang AI. Locator engine kieu Playwright, DevTools panel, CDP trusted input, va bo nho theo man hinh.",
   "minimum_chrome_version": "116",
 

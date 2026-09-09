@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* AI Autofill Studio — Local Bridge
+/* Autofill Studio — Local Bridge
  *
  * Chay tren may cua ban, lam cau noi giua extension va cac cong cu AI ban DA
  * dang nhap san bang tai khoan chinh chu:
@@ -13,28 +13,111 @@
  * muon cookie cua web app — moi thu di qua CLI hop le cua chinh ban.
  *
  * Chay:   node bridge/server.mjs
- *         AF_PORT=8765 AF_TOKEN=bimat node bridge/server.mjs
+ *         node bridge/server.mjs --backend gemini
+ *         node bridge/server.mjs --backend ollama:qwen2.5:7b --port 8765 --token bimat
+ *         node bridge/server.mjs --list
+ *
+ * Co dong lenh giong nhau tren moi shell (bash, PowerShell, cmd). Bien moi
+ * truong AF_* van dung duoc, co dong lenh se de len bien moi truong.
  */
 
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 
-const PORT = Number(process.env.AF_PORT || 8765);
-const HOST = process.env.AF_HOST || '127.0.0.1';
-const TOKEN = process.env.AF_TOKEN || '';
-const OLLAMA = process.env.AF_OLLAMA || 'http://127.0.0.1:11434';
-const TIMEOUT = Number(process.env.AF_TIMEOUT || 120000);
+const VERSION = '0.3.0';
+
+/* ------------------------------------------------------------------- args */
+
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a.startsWith('--')) continue;
+    const eq = a.indexOf('=');
+    if (eq > 0) {
+      out[a.slice(2, eq)] = a.slice(eq + 1);
+      continue;
+    }
+    const key = a.slice(2);
+    const next = argv[i + 1];
+    if (next != null && !next.startsWith('--')) {
+      out[key] = next;
+      i++;
+    } else out[key] = true;
+  }
+  return out;
+}
+
+const ARGS = parseArgs(process.argv.slice(2));
+
+if (ARGS.help || ARGS.h) {
+  console.log(`Autofill Studio — Local Bridge v${VERSION}
+
+Cach dung:
+  node bridge/server.mjs [tuy chon]
+
+Tuy chon (co dong lenh de len bien moi truong):
+  --backend <ten[:model]>  Backend mac dinh khi extension de "Tu chon".
+                           VD: claude · claude:sonnet · gemini · kiro · ollama:qwen2.5:7b
+                           (AF_BACKEND)
+  --port <so>              Cong lang nghe, mac dinh 8765            (AF_PORT)
+  --host <dia chi>         Mac dinh 127.0.0.1                         (AF_HOST)
+  --token <chuoi>          Bat buoc extension gui dung token nay    (AF_TOKEN)
+  --timeout <ms>           Thoi gian cho CLI tra loi, mac dinh 120000 (AF_TIMEOUT)
+  --ollama <url>           Dia chi Ollama, mac dinh http://127.0.0.1:11434 (AF_OLLAMA)
+  --cmd "<lenh>"           Lenh tuy y nhan prompt qua stdin          (AF_CMD)
+  --list                   Chi in danh sach backend tim thay roi thoat
+  --help                   In huong dan nay
+
+Trong extension: Cai dat -> Provider = Local Bridge. Bridge tu tim CLI tren
+PATH; muon doi backend thi chon trong dropdown cua extension hoac dung --backend.`);
+  process.exit(0);
+}
+
+const opt = (flag, env, fallback) => {
+  const v = ARGS[flag];
+  if (v != null && v !== true) return String(v);
+  if (process.env[env]) return process.env[env];
+  return fallback;
+};
+
+const PORT = Number(opt('port', 'AF_PORT', 8765));
+const HOST = opt('host', 'AF_HOST', '127.0.0.1');
+const TOKEN = opt('token', 'AF_TOKEN', '');
+const OLLAMA = opt('ollama', 'AF_OLLAMA', 'http://127.0.0.1:11434').replace(/\/$/, '');
+const TIMEOUT = Number(opt('timeout', 'AF_TIMEOUT', 120000));
+const CUSTOM_CMD = opt('cmd', 'AF_CMD', '');
+const DEFAULT_BACKEND = opt('backend', 'AF_BACKEND', '');
+const ALLOW_ANY_ORIGIN = !!(ARGS['allow-any-origin'] || process.env.AF_ALLOW_ANY_ORIGIN);
 
 /* ------------------------------------------------------------------ utils */
 
-const json = (res, code, obj) => {
+/**
+ * Chi nhan request tu extension (chrome-extension://...) hoac tu cong cu
+ * dong lenh (khong co Origin). Trang web bat ky mo trong trinh duyet KHONG
+ * duoc goi bridge — neu khong, mot trang xau co the dung subscription cua
+ * ban ma ban khong biet.
+ */
+function originAllowed(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  if (ALLOW_ANY_ORIGIN) return true;
+  return /^(chrome|moz|safari-web)-extension:\/\//i.test(origin);
+}
+
+const corsHeaders = (req) => ({
+  'Access-Control-Allow-Origin': req.headers.origin || '*',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Bridge-Token',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Max-Age': '600',
+});
+
+const json = (req, res, code, obj) => {
   const body = JSON.stringify(obj);
   res.writeHead(code, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Bridge-Token',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    ...corsHeaders(req),
   });
   res.end(body);
 };
@@ -136,8 +219,17 @@ const BIN_CANDIDATES = {
   kiro: ['kiro', 'kiro-cli', 'q'], // Kiro CLI moi truoc, Amazon Q Developer cu sau
 };
 
+/** Ten hien thi + cach dang nhap, de bao loi cho dung cho. */
+const BACKEND_INFO = {
+  claude: { label: 'Claude Code CLI', login: 'chay `claude` roi go /login' },
+  gemini: { label: 'Gemini CLI', login: 'chay `gemini` roi go /auth' },
+  kiro: { label: 'Kiro CLI (Amazon Q)', login: 'chay `kiro login` (hoac `q login`)' },
+  ollama: { label: 'Ollama', login: 'chay `ollama serve` va `ollama pull <model>`' },
+  custom: { label: 'Lenh tuy y (AF_CMD)', login: '' },
+};
+
 const BIN_TTL = 15000;
-const binCache = new Map(); // logical -> { bin, at }
+const binCache = new Map(); // logical -> { bin, name, at }
 
 async function resolveBin(logical) {
   const hit = binCache.get(logical);
@@ -168,7 +260,34 @@ async function runBin(logical, args, input) {
     const tried = (BIN_CANDIDATES[logical] || [logical]).join(', ');
     throw new Error(`Khong tim thay CLI cho "${logical}" tren PATH (da thu: ${tried})`);
   }
-  return run(bin, args, input);
+  try {
+    return await run(bin, args, input);
+  } catch (e) {
+    // CLI chua dang nhap thi bao thang cach dang nhap, thay vi in stderr kho hieu
+    if (/log ?in|auth|credential|unauthori[sz]ed|api key|sign ?in/i.test(e.message)) {
+      const how = BACKEND_INFO[logical]?.login;
+      throw new Error(`${e.message}\n→ Co ve ${logical} chua dang nhap. ${how ? 'Hay ' + how + '.' : ''}`);
+    }
+    throw e;
+  }
+}
+
+/** Danh sach model Ollama dang co, hoac null neu Ollama khong chay. */
+let ollamaCache = { at: 0, models: null };
+async function ollamaModels() {
+  if (Date.now() - ollamaCache.at < BIN_TTL) return ollamaCache.models;
+  let models = null;
+  try {
+    const r = await fetch(`${OLLAMA}/api/tags`, { signal: AbortSignal.timeout(1500) });
+    if (r.ok) {
+      const data = await r.json();
+      models = (data?.models || []).map((m) => m.name).filter(Boolean);
+    }
+  } catch {
+    /* Ollama khong chay */
+  }
+  ollamaCache = { at: Date.now(), models };
+  return models;
 }
 
 /** Danh sach backend dang co, kem ten binary that su. */
@@ -176,14 +295,18 @@ async function availableBackends() {
   const out = [];
   for (const logical of Object.keys(BIN_CANDIDATES)) {
     const bin = await resolveBin(logical);
-    if (bin) out.push({ name: logical, bin: (await resolveName(logical)) || bin, path: bin });
+    if (bin) {
+      out.push({
+        name: logical,
+        label: BACKEND_INFO[logical].label,
+        bin: (await resolveName(logical)) || bin,
+        path: bin,
+      });
+    }
   }
-  try {
-    const r = await fetch(`${OLLAMA}/api/tags`);
-    if (r.ok) out.push({ name: 'ollama', bin: OLLAMA });
-  } catch {
-    /* noop */
-  }
+  const models = await ollamaModels();
+  if (models) out.push({ name: 'ollama', label: BACKEND_INFO.ollama.label, bin: OLLAMA, models });
+  if (CUSTOM_CMD) out.push({ name: 'custom', label: BACKEND_INFO.custom.label, bin: CUSTOM_CMD });
   return out;
 }
 
@@ -224,27 +347,44 @@ const stripFence = (t) =>
     .replace(/```\s*$/, '')
     .trim();
 
+const joinPrompt = (system, user) => `${system}\n\n---\n\n${user}`;
+
+/**
+ * Moi backend nhan { system, user, model } trong do `model` la phan sau dau
+ * hai cham cua backend spec (VD "claude:sonnet" -> "sonnet"), co the rong.
+ */
 const backends = {
-  async claude({ system, user }) {
+  async claude({ system, user, model }) {
     // Claude Code CLI o che do headless.
     // System prompt di qua stdin chu khong qua argv: no dai va co xuong dong,
     // ma argv nhieu dong thi vo tren Windows (va la duong cho noi dung trang
     // lot vao dong lenh).
-    return runBin('claude', ['-p', '--output-format', 'text'], `${system}\n\n---\n\n${user}`);
+    const args = ['-p', '--output-format', 'text'];
+    if (model) args.push('--model', model);
+    return runBin('claude', args, joinPrompt(system, user));
   },
 
-  async gemini({ system, user }) {
-    return runBin('gemini', ['-p', `${system}\n\n---\n\n${user}`]);
+  async gemini({ system, user, model }) {
+    const args = ['-p', joinPrompt(system, user)];
+    if (model) args.push('-m', model);
+    return runBin('gemini', args);
   },
 
-  async kiro({ system, user }) {
+  async kiro({ system, user, model }) {
     // Kiro CLI (`kiro`) — truoc day la Amazon Q Developer CLI (`q`).
     // Ca hai deu nhan cung bo co: chat --no-interactive --trust-all-tools
-    return runBin('kiro', ['chat', '--no-interactive', '--trust-all-tools'], `${system}\n\n---\n\n${user}`);
+    const args = ['chat', '--no-interactive', '--trust-all-tools'];
+    if (model) args.push('--model', model);
+    return runBin('kiro', args, joinPrompt(system, user));
   },
 
   async ollama({ system, user, model }) {
-    const name = model.includes(':') ? model.split(':').slice(1).join(':') : 'qwen2.5:7b';
+    let name = model;
+    if (!name) {
+      // Khong chi dinh model thi lay model dau tien dang co tren may
+      const list = await ollamaModels();
+      name = list?.[0] || 'qwen2.5:7b';
+    }
     const res = await fetch(`${OLLAMA}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -261,15 +401,14 @@ const backends = {
     });
     if (!res.ok) throw new Error(`Ollama ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
-    return data?.message?.content || '';
+    return { text: data?.message?.content || '', model: name };
   },
 
   async custom({ system, user }) {
-    const cmd = process.env.AF_CMD;
-    if (!cmd) throw new Error('Chua dat bien moi truong AF_CMD');
-    const [bin, ...args] = tokenize(cmd);
+    if (!CUSTOM_CMD) throw new Error('Chua dat bien moi truong AF_CMD (hoac --cmd)');
+    const [bin, ...args] = tokenize(CUSTOM_CMD);
     if (!bin) throw new Error('AF_CMD rong');
-    return run(bin, args, `${system}\n\n---\n\n${user}`);
+    return run(bin, args, joinPrompt(system, user));
   },
 };
 
@@ -279,47 +418,109 @@ const ALIASES = {
   amazonq: 'kiro',
   'kiro-cli': 'kiro',
   'claude-code': 'claude',
+  auto: null,
   default: null,
+  '': null,
 };
 
-async function pickBackend(model) {
-  const key = String(model || 'default').toLowerCase();
-  const name = ALIASES[key] !== undefined ? ALIASES[key] : key.split(':')[0];
-  if (name && backends[name]) return name;
-  // tu do: uu tien CLI co san, cuoi cung moi den Ollama
+/**
+ * "claude:sonnet" -> { name: 'claude', model: 'sonnet' }
+ * "ollama:qwen2.5:7b" -> { name: 'ollama', model: 'qwen2.5:7b' }
+ * "default" / "" -> { name: null }
+ */
+function parseSpec(spec) {
+  const raw = String(spec || '').trim();
+  const i = raw.indexOf(':');
+  const head = (i >= 0 ? raw.slice(0, i) : raw).toLowerCase();
+  const model = i >= 0 ? raw.slice(i + 1).trim() : '';
+  const name = ALIASES[head] !== undefined ? ALIASES[head] : head;
+  return { name, model };
+}
+
+/**
+ * Thu tu uu tien:
+ *   1. extension chi dinh ro (VD "gemini")
+ *   2. --backend / AF_BACKEND khi khoi dong server
+ *   3. tu chon: CLI dau tien tim thay, cuoi cung moi den Ollama
+ */
+async function pickBackend(requested) {
+  const fromReq = parseSpec(requested);
+  if (fromReq.name) {
+    if (!backends[fromReq.name]) throw new Error(`Backend "${fromReq.name}" khong ton tai (co: ${Object.keys(backends).join(', ')})`);
+    return { ...fromReq, why: 'extension' };
+  }
+  const fromFlag = parseSpec(DEFAULT_BACKEND);
+  if (fromFlag.name) {
+    if (!backends[fromFlag.name]) throw new Error(`--backend "${fromFlag.name}" khong ton tai (co: ${Object.keys(backends).join(', ')})`);
+    return { ...fromFlag, why: 'flag' };
+  }
   const found = await availableBackends();
-  if (found.length) return found[0].name;
+  if (found.length) return { name: found[0].name, model: '', why: 'auto' };
   throw new Error(
-    'Khong tim thay backend nao (claude / gemini / kiro / q / ollama). Cai 1 trong so do hoac dat AF_CMD.'
+    'Khong tim thay backend nao (claude / gemini / kiro / q / ollama). Cai 1 trong so do, dang nhap, roi chay lai bridge.'
   );
+}
+
+/** Ten backend ma "Tu chon" se dung — de extension hien cho nguoi dung biet. */
+async function defaultBackend() {
+  try {
+    const p = await pickBackend('');
+    return { name: p.name, model: p.model, why: p.why };
+  } catch {
+    return null;
+  }
 }
 
 /* ----------------------------------------------------------------- server */
 
+async function healthPayload() {
+  const found = await availableBackends();
+  const def = await defaultBackend();
+  return {
+    ok: true,
+    version: VERSION,
+    // Giu 2 truong cu de extension ban cu van chay
+    backends: found.map((b) => b.name),
+    bins: Object.fromEntries(found.map((b) => [b.name, b.bin])),
+    // Chi tiet cho UI moi: label, duong dan, model (Ollama)
+    detail: found,
+    default: def, // { name, model, why: 'flag' | 'auto' } hoac null
+    auth: TOKEN ? 'token' : 'none',
+    platform: process.platform,
+  };
+}
+
 const server = http.createServer(async (req, res) => {
-  if (req.method === 'OPTIONS') return json(res, 204, {});
+  if (!originAllowed(req)) {
+    return json(req, res, 403, {
+      error: `Origin "${req.headers.origin}" khong duoc phep. Bridge chi nhan request tu extension.`,
+    });
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, corsHeaders(req));
+    return res.end();
+  }
 
-  if (TOKEN && req.headers['x-bridge-token'] !== TOKEN) return json(res, 401, { error: 'Sai token' });
-
-  const url = new URL(req.url, `http://${req.headers.host}`);
-
-  if (url.pathname === '/health') {
-    const found = await availableBackends();
-    return json(res, 200, {
-      ok: true,
-      version: '0.2.0',
-      backends: found.map((b) => b.name),
-      // ten binary that su, de UI hien "kiro (q)" khi may con ban Amazon Q cu
-      bins: Object.fromEntries(found.map((b) => [b.name, b.bin])),
+  if (TOKEN && req.headers['x-bridge-token'] !== TOKEN) {
+    return json(req, res, 401, {
+      error: 'Sai token. Bridge dang chay voi --token; dan dung token vao Cai dat -> Local Bridge -> Token.',
+      auth: 'token',
     });
   }
 
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (url.pathname === '/health') return json(req, res, 200, await healthPayload());
+
   if (url.pathname === '/v1/complete' && req.method === 'POST') {
+    let picked = null;
     try {
       const { system = '', user = '', model = 'default' } = await readBody(req);
-      const name = await pickBackend(model);
+      picked = await pickBackend(model);
       const t0 = Date.now();
-      const text = stripFence(await backends[name]({ system, user, model }));
+      const out = await backends[picked.name]({ system, user, model: picked.model });
+      const text = stripFence(typeof out === 'string' ? out : out.text);
+      const usedModel = typeof out === 'string' ? picked.model : out.model || picked.model;
       let parsed = null;
       try {
         parsed = JSON.parse(text);
@@ -334,20 +535,70 @@ const server = http.createServer(async (req, res) => {
           }
         }
       }
-      return json(res, 200, { ok: true, backend: name, ms: Date.now() - t0, text, json: parsed });
+      const bin = (await resolveName(picked.name)) || picked.name;
+      console.log(`  ${new Date().toLocaleTimeString()}  ${picked.name}${usedModel ? ':' + usedModel : ''}  ${Date.now() - t0}ms  (${picked.why})`);
+      return json(req, res, 200, {
+        ok: true,
+        backend: picked.name,
+        bin,
+        model: usedModel || '',
+        why: picked.why,
+        ms: Date.now() - t0,
+        text,
+        json: parsed,
+      });
     } catch (e) {
-      return json(res, 500, { error: e.message });
+      console.log(`  ${new Date().toLocaleTimeString()}  ${picked?.name || '?'}  LOI: ${e.message.split('\n')[0]}`);
+      return json(req, res, 500, { error: e.message, backend: picked?.name || null });
     }
   }
 
-  return json(res, 404, { error: 'Not found' });
+  return json(req, res, 404, { error: 'Not found' });
+});
+
+/** In danh sach backend ra console, danh dau cai mac dinh. */
+async function printBackends() {
+  const found = await availableBackends();
+  const def = await defaultBackend();
+  if (!found.length) {
+    console.log('  Backend: (khong tim thay CLI nao tren PATH, Ollama cung khong chay)');
+    console.log('  → Cai va dang nhap 1 trong: claude · gemini · kiro · ollama, roi chay lai.');
+    return;
+  }
+  console.log('  Backend tim thay:');
+  for (const b of found) {
+    const star = def && def.name === b.name ? '★' : ' ';
+    let extra = '';
+    if (b.models) extra = b.models.length ? `  model: ${b.models.slice(0, 6).join(', ')}${b.models.length > 6 ? '…' : ''}` : '  (chua pull model nao)';
+    else if (b.bin !== b.name) extra = `  (binary: ${b.bin})`;
+    console.log(`   ${star} ${b.name.padEnd(8)} ${b.label}${extra}`);
+  }
+  if (def) {
+    const src = def.why === 'flag' ? 'theo --backend' : 'tu chon: cai dau tien tim thay';
+    console.log(`  ★ Mac dinh: ${def.name}${def.model ? ':' + def.model : ''}  (${src})`);
+    if (found.length > 1 && def.why !== 'flag') {
+      console.log(`  Doi mac dinh:  node bridge/server.mjs --backend ${found.find((b) => b.name !== def.name)?.name || 'gemini'}`);
+      console.log('  Hoac chon truc tiep trong extension: Cai dat -> Local Bridge -> Backend.');
+    }
+  }
+}
+
+if (ARGS.list) {
+  await printBackends();
+  process.exit(0);
+}
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`Cong ${PORT} dang bi chiem (co the bridge khac dang chay). Thu: node bridge/server.mjs --port ${PORT + 1}`);
+  } else console.error(`Khong mo duoc server: ${e.message}`);
+  process.exit(1);
 });
 
 server.listen(PORT, HOST, async () => {
-  const found = await availableBackends();
-  const label = found.map((b) => (b.name === b.bin ? b.name : `${b.name} (binary: ${b.bin})`)).join(', ');
-  console.log(`Autofill Studio Bridge dang chay tai http://${HOST}:${PORT}`);
-  console.log(`  Backend tim thay: ${label || '(khong co CLI nao — se thu Ollama)'}`);
-  if (TOKEN) console.log('  Token: da bat');
-  console.log('  Trong extension: Cai dat -> Provider = Local Bridge');
+  console.log(`Autofill Studio Bridge v${VERSION} dang chay tai http://${HOST}:${PORT}`);
+  await printBackends();
+  console.log(TOKEN ? '  Token: BAT — extension phai dan dung token nay' : '  Token: tat (chi extension tren may nay goi duoc)');
+  console.log('  Trong extension: Cai dat -> Provider = Local Bridge -> Test ket noi');
+  console.log('');
 });

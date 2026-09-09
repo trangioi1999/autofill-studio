@@ -3,7 +3,7 @@
  */
 import { getSettings, setSettings, resetSettings, pushHistory, DEFAULTS } from '../lib/storage.js';
 import { SYSTEM_PROMPT, PLAN_SCHEMA, buildUserPrompt, planToSteps } from '../lib/prompt.js';
-import { complete, testProvider, geminiOAuthLogin, geminiOAuthLogout, chromeaiAvailability, bridgeHealth, PROVIDERS } from '../providers/index.js';
+import { complete, testProvider, setupStatus, geminiOAuthLogin, geminiOAuthLogout, chromeaiAvailability, bridgeHealth, PROVIDERS } from '../providers/index.js';
 import * as CDP from './cdp.js';
 import * as Mem from '../lib/memory.js';
 import {
@@ -150,6 +150,8 @@ async function generatePlan({ tabId, request, fields, context }) {
     usage: normalizeUsage(res.usage),
     ms: Date.now() - t0,
     provider: settings.provider,
+    // Bridge tra ve backend that su (claude / gemini / kiro / ollama:model)
+    via: res.backend ? `${res.backend}${res.model ? ':' + res.model : ''}` : '',
   };
 }
 
@@ -419,6 +421,7 @@ async function runAgent({ tabId, goal, maxSteps }) {
     const t0 = Date.now();
     let plan;
     let turnUsage = null;
+    let via = '';
     try {
       const res = await complete({
         settings,
@@ -427,6 +430,7 @@ async function runAgent({ tabId, goal, maxSteps }) {
         schema: settings.provider === 'chromeai' ? null : AGENT_SCHEMA,
       });
       plan = res.json || {};
+      via = res.backend ? `${res.backend}${res.model ? ':' + res.model : ''}` : '';
       turnUsage = normalizeUsage(res.usage);
       usage = addUsage(usage, turnUsage);
     } catch (e) {
@@ -441,6 +445,8 @@ async function runAgent({ tabId, goal, maxSteps }) {
       status: plan.status,
       count: actions.length,
       ms: Date.now() - t0,
+      provider: settings.provider,
+      via,
       turnUsage, // token cua rieng luot nay
       usage, // cong don ca phien agent
     });
@@ -475,7 +481,7 @@ async function autofill({ tabId, request, onEvent }) {
 
   emit({ phase: 'generate', message: `Dang hoi ${settings.provider}...` });
   const plan = await generatePlan({ tabId, request, fields, context });
-  emit({ phase: 'planned', steps: plan.steps, skipped: plan.skipped, ms: plan.ms, usage: plan.usage });
+  emit({ phase: 'planned', steps: plan.steps, skipped: plan.skipped, ms: plan.ms, usage: plan.usage, provider: plan.provider, via: plan.via });
 
   emit({ phase: 'run', message: `Dang dien ${plan.steps.length} field...` });
   const results = await runPlan({ tabId, steps: plan.steps });
@@ -528,7 +534,14 @@ const routes = {
     return { ok: true };
   },
   AF_CHROMEAI_STATUS: () => chromeaiAvailability(),
-  AF_BRIDGE_HEALTH: async () => bridgeHealth((await getSettings()).bridge),
+  AF_BRIDGE_HEALTH: async (m) => bridgeHealth(m.cfg || (await getSettings()).bridge),
+  AF_SETUP_STATUS: async () => {
+    try {
+      return await setupStatus(await getSettings());
+    } catch (e) {
+      return { ready: false, reason: e.message };
+    }
+  },
 
   AF_SCAN_TAB: (m) => scanTab(m.tabId, { deep: m.deep }),
   AF_GENERATE: (m) => generatePlan(m),
