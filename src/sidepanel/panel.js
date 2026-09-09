@@ -24,6 +24,7 @@ const state = {
   planSource: 'ai',
   filter: '',
   busy: false,
+  setup: null, // ket qua AF_SETUP_STATUS: provider da san sang chua
   mode: 'fill', // 'fill' = quet & dien mot phat · 'agent' = vong lap dieu khien
   agentRunning: false,
   usage: { input: 0, output: 0, total: 0, calls: 0 },
@@ -198,6 +199,7 @@ async function init() {
   renderProvider();
   renderMode();
   await refreshMemory();
+  await refreshSetup();
 }
 
 async function pickTab() {
@@ -219,23 +221,118 @@ function renderScreen(tab) {
   $('#screen').title = tab?.url || '';
 }
 
+const PROVIDER_LABEL = {
+  gemini: 'Gemini',
+  anthropic: 'Claude API',
+  openai: 'OpenAI-compat',
+  chromeai: 'Chrome AI',
+  bridge: 'Bridge',
+};
+
 function renderProvider() {
-  const map = {
-    gemini: 'Gemini',
-    anthropic: 'Claude',
-    openai: 'OpenAI-compat',
-    chromeai: 'Chrome AI',
-    bridge: 'Local Bridge',
-  };
   const p = state.settings.provider;
   const cfg = state.settings[p] || {};
-  const needsKey = ['gemini', 'anthropic', 'openai'].includes(p);
-  const missing = needsKey && !cfg.apiKey && cfg.auth !== 'oauth';
-
+  const st = state.setup;
   const chip = $('#provider');
-  chip.textContent = missing ? `${map[p] || p} · chua co key` : map[p] || p;
-  chip.classList.toggle('warn', missing);
-  chip.title = missing ? 'Chua cau hinh API key — mo Cai dat' : `${map[p] || p} · ${cfg.model || ''}`;
+
+  let label = PROVIDER_LABEL[p] || p;
+  if (p === 'bridge') {
+    // Hien backend that su: "Bridge · claude" — de biet AI nao dang tra loi
+    const chosen = st?.backend || (cfg.model && cfg.model !== 'default' ? cfg.model : '');
+    if (chosen) label += ` · ${chosen}`;
+  } else if (cfg.model && p !== 'chromeai') label += ` · ${cfg.model}`;
+
+  const bad = st && !st.ready;
+  chip.textContent = bad ? `${PROVIDER_LABEL[p] || p} · chua san sang` : label;
+  chip.classList.toggle('warn', !!bad);
+  chip.title = bad ? st.reason || 'Chua cau hinh — bam de mo Cai dat' : `${label} — bam de mo Cai dat`;
+}
+
+/* ------------------------------------------------------------------- setup */
+
+/** Hoi background xem provider da san sang chua; ve the huong dan neu chua. */
+async function refreshSetup() {
+  state.setup = await send({ type: 'AF_SETUP_STATUS' });
+  renderProvider();
+  renderSetup();
+  return state.setup;
+}
+
+function openOptions(provider) {
+  const url = chrome.runtime.getURL('src/options/options.html') + (provider ? `?provider=${provider}` : '');
+  chrome.tabs.create({ url });
+}
+
+async function chooseProvider(provider) {
+  state.settings = await send({ type: 'AF_SET_SETTINGS', patch: { provider } });
+  const st = await refreshSetup();
+  if (st?.ready) toast(`Da chuyen sang ${PROVIDER_LABEL[provider] || provider}`, 'ok');
+  return st;
+}
+
+function renderSetup() {
+  const box = $('#setup');
+  const st = state.setup;
+  box.textContent = '';
+  if (!st || st.ready) {
+    box.classList.add('hide');
+    return;
+  }
+  box.classList.remove('hide');
+  const p = st.provider;
+
+  box.append(el('div', 'rt', `Chua ket noi duoc AI (${PROVIDER_LABEL[p] || p})`));
+  box.append(el('div', 'rs', st.reason || ''));
+
+  // Bridge chua chay: in dung lenh can go
+  if (p === 'bridge' && st.bridge?.offline) {
+    box.append(el('div', 'rs', 'Mo terminal trong thu muc extension va chay:'));
+    box.append(el('div', 'cmd', 'node bridge/server.mjs'));
+  }
+
+  const opts = el('div', 'opts');
+  const opt = (k, title, desc, onClick) => {
+    const b = el('button', 'opt');
+    b.append(el('span', 'k', k));
+    const t = el('span', '', title);
+    t.append(el('span', 'd', desc));
+    b.append(t);
+    b.onclick = onClick;
+    return b;
+  };
+
+  if (p !== 'bridge') {
+    opts.append(
+      opt('Khong key', 'Dung Local Bridge', 'Goi Claude Code / Gemini CLI / Kiro / Ollama da dang nhap tren may', async () => {
+        const r = await chooseProvider('bridge');
+        if (r && !r.ready) toast('Da chon Bridge — chay "node bridge/server.mjs" roi bam Kiem tra lai', 'info');
+      })
+    );
+  }
+  if (p !== 'chromeai') {
+    opts.append(
+      opt('Offline', 'Dung Chrome AI', 'Gemini Nano chay tren may, mien phi, Chrome 138+', async () => {
+        const r = await chooseProvider('chromeai');
+        if (r && !r.ready) openOptions('chromeai');
+      })
+    );
+  }
+  opts.append(
+    opt('API key', 'Dan API key', 'Gemini (mien phi tai AI Studio) · Claude · OpenAI / OpenRouter / DeepSeek', () =>
+      openOptions(['gemini', 'anthropic', 'openai'].includes(p) ? p : 'gemini')
+    )
+  );
+  box.append(opts);
+
+  const row = el('div', 'row');
+  row.append(
+    btn('Kiem tra lai', async () => {
+      const r = await refreshSetup();
+      toast(r?.ready ? 'Da ket noi' : r?.reason || 'Van chua san sang', r?.ready ? 'ok' : 'err');
+    }, 'btn primary grow'),
+    btn('Mo Cai dat', () => openOptions(p))
+  );
+  box.append(row);
 }
 
 function renderMode() {
@@ -571,6 +668,12 @@ async function previewSnapshot(id) {
   }
 }
 
+/** "Tra loi boi: Bridge -> claude:sonnet" — de biet AI nao vua tra loi. */
+function viaLabel(m) {
+  const p = PROVIDER_LABEL[m.provider] || m.provider;
+  return m.via ? `Tra loi boi: ${p} → ${m.via}` : `Tra loi boi: ${p}`;
+}
+
 /* ------------------------------------------------------- su kien tu background */
 
 let currentCalls = null;
@@ -608,6 +711,7 @@ chrome.runtime.onMessage.addListener((m) => {
       )
     );
     if (state.skipped.length) card.append(el('div', 'meta', `Bo qua ${state.skipped.length} o`));
+    if (state.planSource !== 'memory' && m.provider) card.append(el('div', 'meta', viaLabel(m)));
     const row = el('div', 'row');
     row.append(btn('Xem ke hoach', () => switchView('plan')));
     card.append(row);
@@ -668,6 +772,7 @@ chrome.runtime.onMessage.addListener((m) => {
     if (m.usage?.total) {
       card.append(el('div', 'meta', `Ca phien agent: ${fmtTok(m.usage.total)} token / ${m.usage.calls || 1} lan goi`));
     }
+    if (m.provider) card.append(el('div', 'meta', viaLabel(m)));
     const node = ev(`Chon ${m.count} hanh dong`, { kind: 'ok', ms: m.ms || null, card });
     node.dataset.turn = '1';
     currentCalls = calls;
@@ -730,9 +835,20 @@ document.querySelectorAll('.modes button').forEach((b) => {
   };
 });
 
+/** Truoc khi goi AI: neu provider chua san sang thi chi the huong dan, khong chay. */
+async function ensureReady() {
+  const st = await refreshSetup();
+  if (st?.ready) return true;
+  switchView('run');
+  toast(st?.reason || 'Chua ket noi AI', 'err');
+  $('#setup').scrollIntoView({ block: 'start' });
+  return false;
+}
+
 $('#btn-run').onclick = async () => {
   const request = $('#prompt').value.trim();
   switchView('run');
+  if (!(await ensureReady())) return;
 
   if (state.mode === 'agent') {
     if (!request) return toast('Agent can mot muc tieu cu the', 'err');
@@ -934,6 +1050,7 @@ $('#btn-import-go').onclick = async () => {
 
 $('#btn-mem-refresh').onclick = refreshMemory;
 $('#btn-settings').onclick = () => chrome.runtime.openOptionsPage();
+$('#provider').onclick = () => openOptions(state.settings?.provider);
 $('#q').oninput = (e) => {
   state.filter = e.target.value;
   renderFields();
@@ -959,8 +1076,16 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
 document.addEventListener('visibilitychange', async () => {
   if (document.hidden) return;
   state.settings = await send({ type: 'AF_GET_SETTINGS' });
-  renderProvider();
   renderMode();
+  await refreshSetup();
+});
+
+/* Cai dat doi o tab khac (nguoi dung vua dan key) -> cap nhat ngay */
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.settings) return;
+  state.settings = changes.settings.newValue || state.settings;
+  renderMode();
+  refreshSetup();
 });
 
 init();

@@ -5,7 +5,17 @@
     <title>Autofill Studio — Cai dat</title>
     <link rel="stylesheet" href="../sidepanel/panel.css" />
     <style>
-      body { max-width: 780px; margin: 0 auto; padding: 24px 20px 60px; display: block; }
+      :root { --muted: var(--fg-dim); --chip: var(--surface-2); --brand: var(--accent); }
+      body { max-width: 780px; margin: 0 auto; padding: 24px 20px 60px; display: block; height: auto; }
+      button {
+        border: 1px solid var(--line); background: var(--surface-2); color: var(--fg);
+        padding: 7px 12px; border-radius: var(--r-sm); font-size: 12px;
+      }
+      button:hover:not(:disabled) { border-color: var(--accent); }
+      button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+      button.ghost { background: transparent; }
+      .hint, .field .hint, .inline .hint { margin: 0; padding: 0; background: none; border: 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
+      .hint b { color: var(--fg); }
       h1 { font-size: 19px; margin: 0 0 4px; }
       h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 26px 0 10px; }
       .card { border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; display: grid; gap: 12px; }
@@ -24,6 +34,20 @@
       .status-line { font-size: 12px; padding: 8px 10px; border-radius: 8px; background: var(--chip); }
       a { color: var(--brand); }
       code { font: 11px ui-monospace, Menlo, monospace; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+      .steps { display: grid; gap: 12px; }
+      .step { display: flex; gap: 10px; align-items: flex-start; font-size: 12.5px; }
+      .step .n {
+        flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--accent, var(--brand));
+        color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; margin-top: 1px;
+      }
+      .step > div { flex: 1; min-width: 0; }
+      .cmd { display: flex; align-items: center; gap: 8px; margin: 6px 0 4px; }
+      .cmd code { font-size: 12px; padding: 6px 10px; flex: 1; user-select: all; }
+      button.tiny { padding: 4px 9px; font-size: 11px; }
+      .status-line.ok { color: var(--ok); }
+      .status-line.err { color: var(--err); }
+      details summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+      .autosave { font-size: 11px; color: var(--muted); }
     </style>
   </head>
   <body>
@@ -37,50 +61,119 @@
       <div class="field">
         <label for="provider">Provider</label>
         <select id="provider">
-          <option value="gemini">Google Gemini (API key hoac OAuth)</option>
-          <option value="anthropic">Anthropic Claude (API key)</option>
-          <option value="openai">OpenAI-compatible (OpenAI / OpenRouter / DeepSeek / LM Studio / gateway noi bo)</option>
-          <option value="chromeai">Chrome Built-in AI — Gemini Nano (offline, mien phi)</option>
-          <option value="bridge">Local Bridge (Claude CLI / Gemini CLI / Kiro / Ollama)</option>
+          <optgroup label="Khong can API key">
+            <option value="bridge">Local Bridge — dung CLI da dang nhap tren may (Claude Code / Gemini CLI / Kiro / Ollama)</option>
+            <option value="chromeai">Chrome Built-in AI — Gemini Nano chay offline, mien phi (Chrome 138+)</option>
+          </optgroup>
+          <optgroup label="Can API key">
+            <option value="gemini">Google Gemini (API key)</option>
+            <option value="anthropic">Anthropic Claude (API key)</option>
+            <option value="openai">OpenAI-compatible (OpenAI / OpenRouter / DeepSeek / LM Studio / gateway noi bo)</option>
+          </optgroup>
         </select>
+        <span class="hint">
+          Da co Claude Code, Gemini CLI hay Ollama tren may? Chon <b>Local Bridge</b> — khong phai xin key, dung dung subscription dang co.
+        </span>
+      </div>
+
+      <!-- Bridge -->
+      <div class="prov" data-prov="bridge">
+        <div class="steps">
+          <div class="step">
+            <span class="n">1</span>
+            <div>
+              <div>Mo terminal trong thu muc extension va chay:</div>
+              <div class="cmd"><code id="bridge-cmd">node bridge/server.mjs</code><button id="btn-copy-cmd" class="ghost tiny">Copy</button></div>
+              <span class="hint">Lenh giong nhau tren macOS / Linux / Windows. Them <code>--list</code> de chi xem may co CLI nao.</span>
+            </div>
+          </div>
+          <div class="step">
+            <span class="n">2</span>
+            <div>
+              <div class="status-line" id="bridge-status">Dang kiem tra bridge...</div>
+              <div class="inline" style="margin-top: 6px">
+                <button id="btn-bridge-check" class="ghost tiny">Kiem tra lai</button>
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="n">3</span>
+            <div class="field" style="flex: 1">
+              <label for="b-model">Backend se tra loi</label>
+              <select id="b-model">
+                <option value="default">Tu chon (bridge quyet dinh)</option>
+              </select>
+              <span class="hint" id="b-model-hint">Danh sach lay tu bridge dang chay. May co nhieu AI thi chon dich danh o day de khoi nham.</span>
+            </div>
+          </div>
+        </div>
+
+        <details>
+          <summary>Nang cao: dia chi khac, token</summary>
+          <div class="two" style="margin-top: 10px">
+            <div class="field">
+              <label for="b-url">Bridge URL</label>
+              <input id="b-url" type="url" placeholder="http://127.0.0.1:8765" />
+              <span class="hint">Doi khi chay bridge voi <code>--port</code> khac.</span>
+            </div>
+            <div class="field">
+              <label for="b-token">Token</label>
+              <input id="b-token" type="password" autocomplete="off" placeholder="chi can khi chay bridge voi --token" />
+              <span class="hint">Bridge chi nhan request tu extension nen binh thuong khong can token.</span>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Chrome AI -->
+      <div class="prov" data-prov="chromeai">
+        <div class="status-line" id="chromeai-status">Dang kiem tra...</div>
+        <span class="hint">
+          Can Chrome 138+ va model Gemini Nano da tai. Neu bao <code>downloadable</code>, bam Test de Chrome bat dau tai (~2GB).
+          Che do nay chay hoan toan tren may, khong gui du lieu trang ra ngoai. Chat luong thap hon model cloud voi form phuc tap.
+        </span>
       </div>
 
       <!-- Gemini -->
       <div class="prov" data-prov="gemini">
-        <div class="field">
-          <label for="g-auth">Cach xac thuc</label>
-          <select id="g-auth">
-            <option value="apikey">API key (Google AI Studio)</option>
-            <option value="oauth">OAuth Google (Vertex AI)</option>
-          </select>
-        </div>
         <div class="field" id="g-key-wrap">
           <label for="g-key">Gemini API key</label>
           <input id="g-key" type="password" placeholder="AIza..." autocomplete="off" />
-          <span class="hint">Lay tai <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a></span>
-        </div>
-        <div class="two" id="g-oauth-wrap" style="display: none">
-          <div class="field">
-            <label for="g-client">OAuth Client ID</label>
-            <input id="g-client" type="text" placeholder="xxx.apps.googleusercontent.com" />
-            <span class="hint">Tao OAuth client loai "Web application", redirect URI: <code id="redirect-uri"></code></span>
-          </div>
-          <div class="field">
-            <label for="g-project">Google Cloud Project ID</label>
-            <input id="g-project" type="text" placeholder="my-project-123" />
-          </div>
-          <div class="field">
-            <label for="g-location">Vertex location</label>
-            <input id="g-location" type="text" placeholder="us-central1" />
-          </div>
-          <div class="field" style="align-self: end">
-            <button id="btn-oauth" class="primary">Dang nhap Google</button>
-          </div>
+          <span class="hint">Lay mien phi tai <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> → Create API key → dan vao day.</span>
         </div>
         <div class="field">
           <label for="g-model">Model</label>
           <input id="g-model" type="text" placeholder="gemini-2.5-flash" />
         </div>
+        <details>
+          <summary>Nang cao: dang nhap Google qua Vertex AI (OAuth) thay vi API key</summary>
+          <div class="field" style="margin-top: 10px">
+            <label for="g-auth">Cach xac thuc</label>
+            <select id="g-auth">
+              <option value="apikey">API key (Google AI Studio) — de nhat</option>
+              <option value="oauth">OAuth Google (Vertex AI) — can Google Cloud project</option>
+            </select>
+          </div>
+          <div class="two" id="g-oauth-wrap" style="display: none; margin-top: 10px">
+            <div class="field">
+              <label for="g-client">OAuth Client ID</label>
+              <input id="g-client" type="text" placeholder="xxx.apps.googleusercontent.com" />
+              <span class="hint">Google Cloud Console → Credentials → OAuth client loai "Web application", redirect URI: <code id="redirect-uri"></code></span>
+            </div>
+            <div class="field">
+              <label for="g-project">Google Cloud Project ID</label>
+              <input id="g-project" type="text" placeholder="my-project-123" />
+              <span class="hint">Project phai bat Vertex AI API.</span>
+            </div>
+            <div class="field">
+              <label for="g-location">Vertex location</label>
+              <input id="g-location" type="text" placeholder="us-central1" />
+            </div>
+            <div class="field" style="align-self: end">
+              <button id="btn-oauth" class="primary">Dang nhap Google</button>
+            </div>
+          </div>
+        </details>
       </div>
 
       <!-- Anthropic -->
@@ -88,7 +181,7 @@
         <div class="field">
           <label for="a-key">Anthropic API key</label>
           <input id="a-key" type="password" placeholder="sk-ant-..." autocomplete="off" />
-          <span class="hint">Lay tai <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>. Extension gui kem header <code>anthropic-dangerous-direct-browser-access</code>.</span>
+          <span class="hint">Lay tai <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>. Da co Claude Code tren may? Dung <b>Local Bridge</b> thay vi key.</span>
         </div>
         <div class="two">
           <div class="field">
@@ -117,45 +210,13 @@
         <div class="two">
           <div class="field">
             <label for="o-key">API key</label>
-            <input id="o-key" type="password" autocomplete="off" />
+            <input id="o-key" type="password" autocomplete="off" placeholder="server local (LM Studio, Ollama) khong can" />
           </div>
           <div class="field">
             <label for="o-model">Model</label>
             <input id="o-model" type="text" placeholder="gpt-4o-mini" />
           </div>
         </div>
-      </div>
-
-      <!-- Chrome AI -->
-      <div class="prov" data-prov="chromeai">
-        <div class="status-line" id="chromeai-status">Dang kiem tra...</div>
-        <span class="hint">
-          Can Chrome 138+ va model Gemini Nano da tai. Neu bao <code>downloadable</code>, bam Test de Chrome bat dau tai (~2GB).
-          Che do nay chay hoan toan tren may, khong gui du lieu trang ra ngoai.
-        </span>
-      </div>
-
-      <!-- Bridge -->
-      <div class="prov" data-prov="bridge">
-        <div class="two">
-          <div class="field">
-            <label for="b-url">Bridge URL</label>
-            <input id="b-url" type="url" placeholder="http://127.0.0.1:8765" />
-          </div>
-          <div class="field">
-            <label for="b-model">Backend</label>
-            <input id="b-model" type="text" placeholder="claude | gemini | kiro | ollama:qwen2.5 | default" />
-          </div>
-        </div>
-        <div class="field">
-          <label for="b-token">Token (tuy chon)</label>
-          <input id="b-token" type="password" autocomplete="off" />
-        </div>
-        <div class="status-line" id="bridge-status">Chua kiem tra.</div>
-        <span class="hint">
-          Chay <code>node bridge/server.mjs</code> trong thu muc extension. Bridge goi lai CLI ban da dang nhap san
-          (Claude Code, Gemini CLI, Kiro/Amazon Q) hoac Ollama — khong can dan API key vao trinh duyet.
-        </span>
       </div>
 
       <div class="inline">
@@ -227,6 +288,7 @@ Chuc danh: Senior Frontend Developer"></textarea>
       <button id="btn-save" class="primary">Luu</button>
       <button id="btn-reset" class="ghost">Khoi phuc mac dinh</button>
       <span id="save-result" class="hint"></span>
+      <span class="autosave">· Moi thay doi deu tu luu, nut Luu chi de chac chan.</span>
     </div>
 
     <script type="module" src="options.js"></script>

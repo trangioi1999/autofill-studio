@@ -20,10 +20,15 @@ Ba chế độ, chọn theo việc:
 ## Cài trong 2 phút
 
 1. Mở `chrome://extensions` → bật **Developer mode**
-2. **Load unpacked** → chọn thư mục `ai-autofill/`
+2. **Load unpacked** → chọn thư mục này
 3. Bấm icon extension → mở **Side panel**
-4. Vào ⚙ **Cài đặt** → chọn provider → dán API key → **Test kết nối**
-5. Mở `testpage/index.html` để thử ngay
+4. Panel hiện thẻ **"Chưa kết nối được AI"** với 3 nút — chọn một:
+   - **Không key → Dùng Local Bridge**: máy đã có Claude Code / Gemini CLI / Kiro / Ollama. Chạy `node bridge/server.mjs` là xong.
+   - **Offline → Dùng Chrome AI**: Gemini Nano chạy trên máy, Chrome 138+.
+   - **API key → Dán API key**: mở Cài đặt, dán key Gemini (miễn phí ở AI Studio) / Claude / OpenAI.
+5. Bấm **Kiểm tra lại** → thẻ biến mất là dùng được. Mở `testpage/index.html` để thử.
+
+Không phải bấm Lưu trong Cài đặt — mọi thay đổi tự lưu. Chip provider ở thanh dưới (ví dụ `Bridge · claude`) luôn cho biết AI nào đang trả lời; bấm vào là mở Cài đặt.
 
 Phím tắt: `Alt+Shift+F` chạy autofill · `Alt+Shift+P` bật element picker.
 
@@ -33,11 +38,11 @@ Phím tắt: `Alt+Shift+F` chạy autofill · `Alt+Shift+P` bật element picker
 
 | Provider | Cách xác thực | Ghi chú |
 |---|---|---|
-| **Google Gemini** | API key hoặc **OAuth chính chủ** | OAuth đi qua Vertex AI, cần Client ID + Project ID |
+| **Google Gemini** | API key | OAuth qua Vertex AI vẫn có, giấu trong mục *Nâng cao* vì cần Google Cloud project |
 | **Anthropic Claude** | API key | Gửi kèm header `anthropic-dangerous-direct-browser-access` |
 | **OpenAI-compatible** | API key | OpenAI, OpenRouter, DeepSeek, Groq, LM Studio, vLLM, gateway nội bộ |
 | **Chrome Built-in AI** | Không cần gì | Gemini Nano chạy **offline** trên máy, miễn phí, Chrome 138+ |
-| **Local Bridge** | Không cần key | Gọi lại CLI bạn đã đăng nhập sẵn: Claude Code, Gemini CLI, Kiro CLI, Ollama |
+| **Local Bridge** | Không cần key | Gọi lại CLI bạn đã đăng nhập sẵn: Claude Code, Gemini CLI, Kiro CLI, Ollama. **Đường dễ nhất nếu máy đã có CLI.** |
 
 ### Vì sao không dùng lại cookie của claude.ai / gemini.google.com
 
@@ -52,20 +57,42 @@ Bạn có hỏi về hướng này. Nó vi phạm ToS của cả hai bên, có t
 node bridge/server.mjs
 ```
 
-Đặt biến môi trường thì cú pháp khác nhau tuỳ shell:
+Bridge in ra danh sách AI tìm thấy trên máy và đánh dấu ★ cái sẽ dùng khi extension để "Tự chọn":
 
-```bash
-# macOS / Linux
-AF_PORT=8765 AF_TOKEN=bimat node bridge/server.mjs
-
-# Windows — PowerShell
-$env:AF_PORT=8765; $env:AF_TOKEN="bimat"; node bridge/server.mjs
-
-# Windows — cmd.exe
-set AF_PORT=8765&& set AF_TOKEN=bimat&& node bridge/server.mjs
+```
+Autofill Studio Bridge v0.3.0 dang chay tai http://127.0.0.1:8765
+  Backend tim thay:
+   ★ claude   Claude Code CLI
+     gemini   Gemini CLI
+     kiro     Kiro CLI (Amazon Q)  (binary: q)
+     ollama   Ollama  model: qwen2.5:7b, llama3.1:8b
+  ★ Mac dinh: claude  (tu chon: cai dau tien tim thay)
+  Doi mac dinh:  node bridge/server.mjs --backend gemini
+  Hoac chon truc tiep trong extension: Cai dat -> Local Bridge -> Backend.
 ```
 
-Server tự dò backend có sẵn. Trong Cài đặt, ô **Backend** nhận: `claude`, `gemini`, `kiro`, `ollama:qwen2.5:7b`, hoặc `default` (tự chọn). Muốn lệnh riêng: `AF_CMD="lệnh của bạn" node bridge/server.mjs`.
+**Máy có nhiều AI thì chọn cái nào?** Hai chỗ, chỗ nào cũng được:
+
+- Trong extension: **Cài đặt → Local Bridge → Backend** là dropdown lấy thẳng từ bridge — mỗi CLI một dòng, Ollama liệt kê từng model đã pull. Chọn ở đây là ưu tiên cao nhất.
+- Khi chạy bridge: `--backend gemini`, `--backend claude:sonnet`, `--backend ollama:qwen2.5:7b`. Áp dụng khi extension để "Tự chọn".
+
+Mỗi lần điền, panel ghi rõ **"Trả lời bởi: Bridge → claude"** và chip ở thanh dưới hiện `Bridge · claude`, nên không bao giờ phải đoán. Log của bridge cũng in từng request: backend nào, mất bao lâu, và vì sao chọn nó (`extension` / `flag` / `auto`).
+
+Mọi tuỳ chọn là **cờ dòng lệnh, giống nhau trên bash / PowerShell / cmd** — không phải nhớ cú pháp env var của từng shell:
+
+```bash
+node bridge/server.mjs --list                       # chỉ xem máy có AI nào
+node bridge/server.mjs --backend gemini             # đổi mặc định
+node bridge/server.mjs --port 8790 --token bimat    # cổng khác + bắt token
+node bridge/server.mjs --cmd "my-cli --json"        # lệnh riêng, nhận prompt qua stdin
+node bridge/server.mjs --help
+```
+
+Biến môi trường `AF_PORT` `AF_TOKEN` `AF_BACKEND` `AF_CMD` `AF_OLLAMA` vẫn dùng được; cờ đè lên biến.
+
+**Token có cần không?** Không, trong đa số trường hợp. Bridge chỉ nhận request từ extension (`chrome-extension://`) hoặc từ dòng lệnh; một trang web bất kỳ mở trong trình duyệt bị từ chối 403, nên không ai mượn được subscription của bạn. `--token` là lớp khoá thêm nếu muốn — dán cùng chuỗi vào *Nâng cao → Token* trong Cài đặt, và ô lệnh trong Cài đặt sẽ tự in ra lệnh đúng để copy.
+
+Cổng 8765 bị chiếm thì bridge nói thẳng và gợi ý `--port 8766`. CLI chưa đăng nhập thì lỗi trả về kèm đúng lệnh đăng nhập (`claude` → `/login`, `gemini` → `/auth`, `kiro login`).
 
 **Về Kiro:** AWS đã đổi tên Amazon Q Developer CLI thành **Kiro CLI**, binary từ `q` sang `kiro`. Bridge dò lần lượt `kiro` → `kiro-cli` → `q` nên bản nào cũng chạy, và `model` nhận cả `kiro` lẫn `q`. Đăng nhập:
 
@@ -80,13 +107,28 @@ kiro login          # chọn Free (AWS Builder ID) hoặc Pro (IAM Identity Cent
 kiro whoami         # kiểm tra
 ```
 
-`GET /health` trả về cả tên binary thật:
+`GET /health` trả về danh sách chi tiết, cái mặc định, và có đang yêu cầu token không:
 
 ```json
-{ "ok": true, "backends": ["claude", "kiro"], "bins": { "kiro": "q" } }
+{
+  "ok": true, "version": "0.3.0",
+  "backends": ["claude", "kiro", "ollama"],
+  "bins": { "claude": "claude", "kiro": "q", "ollama": "http://127.0.0.1:11434" },
+  "detail": [
+    { "name": "claude", "label": "Claude Code CLI", "bin": "claude", "path": "/usr/local/bin/claude" },
+    { "name": "kiro", "label": "Kiro CLI (Amazon Q)", "bin": "q", "path": "/usr/local/bin/q" },
+    { "name": "ollama", "label": "Ollama", "models": ["qwen2.5:7b"] }
+  ],
+  "default": { "name": "claude", "model": "", "why": "auto" },
+  "auth": "none"
+}
 ```
 
-### OAuth Google (nếu muốn)
+`POST /v1/complete` trả về `backend`, `model`, `why` bên cạnh `text` / `json` — extension dùng để hiện "Trả lời bởi".
+
+### OAuth Google (chỉ khi thật sự cần)
+
+Nằm trong *Cài đặt → Gemini → Nâng cao*. Với hầu hết người dùng, API key ở AI Studio là đủ và dễ hơn nhiều. Chỉ đi đường này nếu công ty bắt buộc dùng Vertex AI:
 
 1. Google Cloud Console → APIs & Services → Credentials → **OAuth client ID** → loại *Web application*
 2. Redirect URI: lấy chuỗi hiện trong trang Cài đặt (dạng `https://<extension-id>.chromiumapp.org/oauth2`)
@@ -298,8 +340,9 @@ Extension thì không có gì khác — Chrome là Chrome. Chỗ khác nhau nằ
 - **Dò CLI** dùng `where` thay `which`, và lấy đường dẫn đầy đủ để biết thứ tìm được là `.exe` hay `.cmd`.
 - **Shim `.cmd`** — CLI cài bằng npm trên Windows là file `.cmd`, Node chỉ chạy được qua `cmd.exe`. Bridge tự phát hiện và bọc đối số đúng cách, thay vì bật `shell: true` cho mọi thứ (bật bừa thì nội dung trang web sẽ bị `cmd.exe` diễn giải — vừa vỡ vừa nguy hiểm).
 - **Prompt đi qua stdin**, không qua dòng lệnh. System prompt dài, nhiều dòng, có dấu nháy — đưa vào argv là hỏng trên Windows. Riêng `gemini` bắt buộc dùng `-p <prompt>` nên vẫn qua argv; nếu gặp lỗi lạ với Gemini CLI trên Windows thì đổi sang backend `claude` hoặc `ollama`.
-- **`AF_CMD`** tách theo dấu nháy, nên đường dẫn có dấu cách vẫn chạy:
-  `AF_CMD='"C:\Program Files\ai\cli.exe" --json'`
+- **`--cmd` / `AF_CMD`** tách theo dấu nháy, nên đường dẫn có dấu cách vẫn chạy:
+  `node bridge/server.mjs --cmd "\"C:\Program Files\ai\cli.exe\" --json"`
+- **Cờ dòng lệnh** (`--port`, `--token`, `--backend`) giống hệt trên PowerShell và cmd, không phải nhớ `$env:` hay `set`.
 - **`.gitattributes`** ép LF, để shebang của `server.mjs` không chết vì CRLF.
 
 Phím tắt `Alt+Shift+F` / `Alt+Shift+P` giống nhau hai bên. Trong side panel, `Cmd+Enter` và `Ctrl+Enter` đều chạy.
@@ -353,7 +396,7 @@ testpage/           form thử: Material select, multi-select, shadow DOM, ifram
 
 **Bộ nhớ theo màn hình** — test lưu/ghép với `chrome.storage` giả lập: lọc đúng 4/8 ô (bỏ password, OTP, ô rỗng, checkbox chưa tick), gom `/apply/999` với `/apply/12345` về một khoá, ghép lại đủ 4 ô sau khi selector đổi và thứ tự đảo, checkbox trả về boolean, và ghép **0 ô** khi thả vào một form không liên quan.
 
-**Bridge** — `/health` và `/v1/complete` chạy thật, xác nhận `kiro` và `q` cùng trỏ về một backend và báo lỗi rõ khi chưa cài CLI. `AF_CMD` với đường dẫn có dấu cách và đối số trong dấu nháy tách đúng. Backend `claude` gửi system prompt qua stdin — argv chỉ còn `-p --output-format text`, không còn nội dung trang nào lọt vào dòng lệnh.
+**Bridge** — `/health` và `/v1/complete` chạy thật, xác nhận `kiro` và `q` cùng trỏ về một backend và báo lỗi rõ khi chưa cài CLI. Bản 0.3: token sai trả 401 kèm hướng dẫn, origin `https://` lạ bị chặn 403, preflight từ `chrome-extension://` được phép, `--backend custom` được đánh dấu mặc định trong `/health`, backend không tồn tại báo danh sách hợp lệ. Extension nạp thật vào Chromium: thẻ "Chưa kết nối" hiện đúng 3 nút khi thiếu key, in đúng lệnh khi bridge tắt, chip đổi thành `Bridge · custom` khi bridge chạy, và một lần điền qua bridge ghi "Trả lời bởi: Bridge → custom". `AF_CMD` với đường dẫn có dấu cách và đối số trong dấu nháy tách đúng. Backend `claude` gửi system prompt qua stdin — argv chỉ còn `-p --output-format text`, không còn nội dung trang nào lọt vào dòng lệnh.
 
 **Agent** — chạy `service-worker.js` thật trong Node với `chrome.*` giả lập và một "model" HTTP trả JSON theo kịch bản, trên một trang 2 bước: đi hết 2 bước và kết thúc `done`; dừng đúng sau `click` nên hành động xếp sau bị bỏ; ref không tồn tại báo lỗi chứ không crash; lượt 2 nhận bản đồ mới + lịch sử lượt 1; không tự bấm "Gửi hồ sơ". Nút dừng trả `stopped` giữa chừng, trần lượt trả `maxsteps`.
 

@@ -274,6 +274,32 @@ button:disabled { opacity: .45; cursor: default; }
 .ev .card b { color: var(--fg); font-weight: 600; }
 .ev .card .row { display: flex; gap: 6px; margin-top: 7px; }
 
+/* ------------------------------------------------------------------- setup */
+/* The "ket noi AI" — hien khi provider chua san sang, de nguoi dung biet lam gi */
+
+.setup {
+  margin-bottom: 12px; padding: 11px 12px;
+  border: 1px solid var(--warn); border-radius: var(--r);
+  background: var(--surface);
+}
+.setup.ok { border-color: var(--line-soft); }
+.setup .rt { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+.setup .rs { font-size: 11px; color: var(--fg-dim); white-space: pre-wrap; line-height: 1.5; }
+.setup .opts { display: grid; gap: 6px; margin-top: 9px; }
+.setup .opt {
+  display: flex; align-items: center; gap: 9px; text-align: left;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--fg); font-size: 12px;
+}
+.setup .opt:hover:not(:disabled) { border-color: var(--accent); }
+.setup .opt .k { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); flex: none; width: 52px; }
+.setup .opt .d { font-size: 10.5px; color: var(--fg-dim); display: block; margin-top: 1px; }
+.setup .cmd {
+  margin-top: 8px; padding: 7px 9px; border-radius: var(--r-sm);
+  background: var(--surface-2); font: 11px var(--mono); color: var(--fg); user-select: all;
+}
+.setup .row { display: flex; gap: 6px; margin-top: 9px; }
+
 /* ------------------------------------------------------------------ recall */
 /* Bang goi y "man hinh nay da co ban luu" */
 
