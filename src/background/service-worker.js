@@ -11,7 +11,7 @@ import {
   renderSnapshot, renderState, buildAgentPrompt, compactHistory, actionToStep,
 } from '../lib/agent.js';
 import { screenKey } from '../lib/screen.js';
-import { dummyPlan, fillGaps } from '../lib/dummy.js';
+import { dummyPlan, fillGaps, newlyEnabled } from '../lib/dummy.js';
 import { normalizeUsage, addUsage } from '../lib/usage.js';
 
 /* ------------------------------------------------------------------ setup */
@@ -495,6 +495,18 @@ async function autofill({ tabId, request, onEvent }) {
   const okCount = results.filter((r) => r.ok).length;
   emit({ phase: 'done', results, ok: okCount, total: results.length });
 
+  // O phu thuoc vua mo khoa -> hoi AI them mot lan chi cho nhung o do
+  await fillDependentPasses({
+    tabId,
+    prevFields: fields,
+    context,
+    emit,
+    plan: async (fresh, ctx) => {
+      emit({ phase: 'generate', message: `Dang hoi ${settings.provider} cho ${fresh.length} o vua mo...` });
+      return generatePlan({ tabId, request, fields: fresh, context: ctx });
+    },
+  });
+
   await setSettings({ lastPrompt: request });
   await pushHistory({ url: context.url, request, ok: okCount, total: results.length });
 
@@ -509,6 +521,37 @@ async function autofill({ tabId, request, onEvent }) {
   }
 
   return { fields, plan, results };
+}
+
+/* ------------------------------------------------------- field phu thuoc */
+
+/**
+ * Form co o chi mo khoa sau khi o khac co gia tri (chon "Loai chung tu" ->
+ * mo "So dinh danh", "Ngay cap"...). Sau luot dau, quet lai va dien tiep
+ * nhung o vua mo, toi da `maxPass` luot. `plan(fields)` tra ve steps.
+ */
+async function fillDependentPasses({ tabId, prevFields, context, plan, emit, maxPass = 2 }) {
+  const settings = await getSettings();
+  if (!settings.fillDependents) return { fields: prevFields, results: [] };
+  let seen = prevFields;
+  const allResults = [];
+  for (let pass = 2; pass <= maxPass + 1; pass++) {
+    const { fields } = await scanTab(tabId, { deep: settings.deepScan });
+    const fresh = newlyEnabled(seen, fields);
+    seen = fields;
+    if (!fresh.length) break;
+    emit({ phase: 'pass', pass, count: fresh.length, message: `Luot ${pass}: ${fresh.length} o vua duoc mo khoa, dien tiep...` });
+    const t0 = Date.now();
+    const p = await plan(fresh, context);
+    emit({ phase: 'planned', pass, steps: p.steps, skipped: p.skipped || [], ms: p.ms ?? Date.now() - t0, usage: p.usage, provider: p.provider, via: p.via, source: p.source, randomFilled: p.randomFilled });
+    if (!p.steps.length) break;
+    emit({ phase: 'run', pass, message: `Dang dien ${p.steps.length} o (luot ${pass})...` });
+    const results = await runPlan({ tabId, steps: p.steps });
+    allResults.push(...results);
+    const okCount = results.filter((r) => r.ok).length;
+    emit({ phase: 'done', pass, results, ok: okCount, total: results.length, source: p.source });
+  }
+  return { fields: seen, results: allResults };
 }
 
 /* ------------------------------------------------------------- dummy fill */
@@ -532,8 +575,19 @@ async function dummyFill({ tabId }) {
   const results = await runPlan({ tabId, steps });
   const okCount = results.filter((r) => r.ok).length;
   emit({ phase: 'done', results, ok: okCount, total: results.length, source: 'random' });
+
+  // O phu thuoc vua mo khoa -> dien tiep bang du lieu thu
+  const more = await fillDependentPasses({
+    tabId,
+    prevFields: fields,
+    emit,
+    plan: async (fresh) => {
+      const p = dummyPlan(fresh);
+      return { steps: planToSteps(p, fresh), skipped: p.skipped, source: 'random' };
+    },
+  });
   // Khong ghi vao bo nho man hinh: du lieu thu khong phai du lieu that cua ban
-  return { fields, steps, results, ok: okCount, total: results.length };
+  return { fields: more.fields, steps, results: results.concat(more.results), ok: okCount, total: results.length };
 }
 
 /* ------------------------------------------------------------ msg router */

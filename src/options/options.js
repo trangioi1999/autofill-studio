@@ -31,6 +31,7 @@ const FIELDS = {
   cdpMode: '#cdpMode',
   stopOnError: '#stopOnError',
   randomGaps: '#randomGaps',
+  fillDependents: '#fillDependents',
   autoSaveSnapshot: '#autoSaveSnapshot',
   autoSuggestSnapshot: '#autoSuggestSnapshot',
   typeDelay: '#typeDelay',
