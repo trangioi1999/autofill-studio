@@ -9,6 +9,7 @@ Ba chế độ, chọn theo việc:
 | **Điền form** | Một form, một màn hình | 1 lần gọi AI |
 | **Agent** | Nhiều bước, nhiều trang — bấm, điều hướng, chờ, đọc, rồi điền | 1 lần gọi AI **mỗi lượt** |
 | **Bộ nhớ** | Màn hình đã từng điền | 0 — không gọi AI |
+| **Ngẫu nhiên** | Test form: cần dữ liệu hợp lệ bất kỳ | 0 — không gọi AI, không cần key |
 
 <p align="center">
   <img src="docs/panel-agent.png" width="320" alt="Agent chạy tool" />
@@ -188,6 +189,31 @@ Hồ sơ nằm trong `chrome.storage.local` trên máy bạn, không đồng b�
 
 ---
 
+## Chế độ Ngẫu nhiên (dữ liệu thử, không cần AI)
+
+Chọn **Ngẫu nhiên** ở thanh dưới rồi bấm gửi. Không gọi model, không cần key, chạy được cả khi chưa cấu hình gì:
+
+| Loại ô | Giá trị |
+|---|---|
+| Dropdown / combobox | 1 option ngẫu nhiên, bỏ qua option placeholder (`-- Chọn --`) |
+| Multi-select | 1–3 option ngẫu nhiên, không trùng |
+| Radio | 1 lựa chọn ngẫu nhiên |
+| Checkbox | tick nếu bắt buộc hoặc là "đồng ý điều khoản", còn lại tung đồng xu |
+| Số | ngẫu nhiên trong `[min, max]` của input, tôn trọng `step`; không có min/max thì đoán theo nhãn (tuổi 18–60, số lượng 1–10, lương ×1.000.000) |
+| Ngày | ngày sinh 1980–2005, ngày khác ±30 ngày quanh hôm nay, đúng định dạng `date` / `time` / `month` |
+| Text | đoán theo nhãn: họ tên → tên Việt, email, điện thoại `09xxxxxxxx`, địa chỉ, công ty, chức danh, URL, mã bưu chính… Không đoán được thì **lấy chính nhãn làm giá trị** (`Ghi chú khác 17`) |
+| Textarea | nhãn + một câu, cắt theo `maxLength` |
+| `pattern` chỉ cho số | sinh đúng số chữ số |
+| Mật khẩu, OTP, CVV, số thẻ, captcha | **không bao giờ** điền |
+
+Mỗi giá trị mang nhãn nguồn `ngẫu nhiên` trong tab Kế hoạch. Chế độ này **không** ghi vào bộ nhớ màn hình, vì đó không phải dữ liệu thật của bạn.
+
+**Với chế độ Điền form (AI)**: dropdown / multi-select / radio mà AI bỏ trống, hoặc AI đưa giá trị không có trong danh sách, sẽ được chọn ngẫu nhiên thay vì để trống — bật/tắt trong *Cài đặt → Hành vi*. Dòng "N ô … đã chọn ngẫu nhiên" hiện trong luồng hoạt động.
+
+## Chuyển động khi điền
+
+Engine chỉ cuộn khi ô nằm ngoài khung nhìn (trước đây mỗi bước đều nhảy tức thì về giữa màn hình, nên trang giật liên tục), cuộn mượt và chờ ổn định rồi mới thao tác. Một **con trỏ** duy nhất trượt từ ô này sang ô kia để bạn thấy engine đang ở đâu, khung xanh/đỏ hiện nhẹ sau mỗi ô và tự biến mất khi trang cuộn, nhịp đều ~140ms giữa các bước. Bật `prefers-reduced-motion` thì tất cả về tức thì.
+
 ## Chế độ Agent
 
 Giống cách Playwright MCP hay Claude điều khiển trình duyệt: model **không thấy DOM**, nó thấy một bản đồ phẳng của trang, mỗi dòng một element kèm ref.
@@ -261,6 +287,8 @@ Mở DevTools → tab **Autofill Studio**. Đây là phần "giống Playwright 
 - **Locator playground** — gõ `role=textbox|name=Email`, `label=Họ và tên`, `testid=submit`, `css=#email`, `//input[@id="email"]`, hoặc JSON. Trả về số kết quả khớp + trạng thái visible/enabled từng cái, y như `page.locator(...)`
 - Chạy thử một action đơn lẻ để debug trước khi cho AI chạy cả plan
 - **Element picker** — hover highlight + tooltip như DevTools Inspect, click để lấy locator gợi ý (ưu tiên `data-testid` → `role+name` → `label` → CSS)
+
+Ở side panel, **Đánh dấu** và **Chọn element** là chip bật/tắt: bấm một lần là bật (chip đổi màu, có chấm nhấp nháy), bấm lại là tắt. Đang chọn element mà bấm lại chip hoặc nhấn Esc là huỷ. Nút **✕ Xoá** chỉ hiện khi có overlay đang bật.
 
 ---
 
@@ -378,6 +406,7 @@ src/
                99-main.js         message bridge
   providers/   gemini · anthropic · openai · chromeai · bridge
   lib/         agent.js    vòng lặp agent: tool, prompt, ref map
+               dummy.js    dữ liệu thử: random dropdown/multi/số, text theo nhãn
                usage.js    quy token của 5 provider về một dạng
                prompt.js   system prompt + schema
                storage.js  cài đặt
@@ -405,5 +434,7 @@ testpage/           form thử: Material select, multi-select, shadow DOM, ifram
 **Đếm token** — 7 assert cho `usage.js` (OpenAI / Anthropic / Anthropic có cache / Gemini / không có usage / cộng dồn / định dạng), cộng 3 assert chạy qua vòng lặp agent thật: tổng cộng dồn đúng, đếm đúng số lần gọi, và mỗi lượt báo token của riêng nó.
 
 **Nguồn dữ liệu** — `source` từ model được giữ nguyên; model quên khai thì mặc định `invented`; schema bắt buộc có `source` và chỉ nhận 4 giá trị hợp lệ.
+
+**Ngẫu nhiên + chuyển động** — extension nạp thật vào Chromium, chế độ Ngẫu nhiên trên `testpage/index.html`: **17/17 ô** trong ~8s, gồm mat-select đơn (1 option), multi (3 option), select native, radio, checkbox, upload, date, và 4 ô trong iframe; con trỏ trượt xuất hiện và di chuyển theo từng ô rồi tự ẩn khi xong; chip Đánh dấu bật → 13 khung trên trang, tắt → 0; chip Chọn element bật → "Đang chọn… (Esc)", bấm lại → huỷ và trả về ngay. `dummy.js`: 14 loại ô sinh đúng loại giá trị, ô mật khẩu/OTP bị bỏ qua, `fillGaps` bù 3 ô AI bỏ trống/đưa sai, option placeholder không bao giờ được chọn (0/50 lần).
 
 **Bản đồ trang** — `50-snapshot.js` chạy trên `testpage/index.html` thật: đọc đúng 18 element gồm cả shadow DOM, và sau khi hành động thì phản ánh đúng giá trị của mat-select, multi-select, native select, radio, checkbox — không nhầm placeholder (`-- Chọn --`, `Chọn...`) thành giá trị.

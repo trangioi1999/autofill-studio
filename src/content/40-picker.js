@@ -113,11 +113,14 @@
   /* Mot khung duy nhat truot giua cac o dang dien — thay cho viec moi o mot
      khung moi bat len tat di, trong rat giat. Tu an sau vai giay khong dung. */
 
+  let cursorTarget = null;
+
   const cursor = (el) => {
     if (!AF.isConnected(el)) return;
     ensure();
     const r = AF.rectOf(el);
     if (r.width <= 0 || r.height <= 0) return;
+    cursorTarget = el;
     if (!cursorEl || !cursorEl.isConnected) {
       cursorEl = document.createElement('div');
       cursorEl.className = 'box cursor off';
@@ -137,6 +140,7 @@
 
   const cursorOff = () => {
     clearTimeout(cursorTimer);
+    cursorTarget = null;
     if (!cursorEl) return;
     const c = cursorEl;
     cursorEl = null;
@@ -313,5 +317,20 @@
     },
   };
 
-  addEventListener('scroll', () => picking && clearLayer(), true);
+  /* Overlay la position:fixed nen khi trang cuon, khung cu se lech cho:
+     bo khung flash, va dat lai con tro theo element (khong animate). */
+  addEventListener(
+    'scroll',
+    () => {
+      if (picking) return clearLayer();
+      if (!layer) return;
+      layer.querySelectorAll('.box.ok,.box.err').forEach((b) => b.remove());
+      if (cursorEl && cursorTarget && AF.isConnected(cursorTarget)) {
+        cursorEl.style.transition = 'none';
+        place(cursorEl, AF.rectOf(cursorTarget));
+        setTimeout(() => cursorEl && (cursorEl.style.transition = ''), 50);
+      }
+    },
+    { capture: true, passive: true }
+  );
 })();
