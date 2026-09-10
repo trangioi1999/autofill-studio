@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <title>Test form — Angular Material / Shadow DOM / iframe</title>
     <style>
+      .mat-mdc-chip-grid { display: flex; flex-wrap: wrap; gap: 4px; min-height: 8px; }
+      .mat-mdc-chip { background: #e8e6ff; border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+      .contains-mat-select-search input { width: 100%; box-sizing: border-box; padding: 6px 8px; }
       body { font: 14px/1.6 system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
       h2 { margin-top: 28px; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
       mat-form-field { display: block; margin: 12px 0; }
@@ -98,6 +101,36 @@
 
     <p><label><input type="checkbox" id="agree" required /> Toi dong y voi dieu khoan</label></p>
 
+    <h2>Angular Material nang cao</h2>
+    <mat-form-field class="mat-mdc-form-field">
+      <mat-label>Quan / Huyen (mat-select co o tim kiem)</mat-label>
+      <mat-select id="district" role="combobox" aria-haspopup="listbox" data-search="1"
+        data-options="Quan 1,Quan 3,Quan 5,Quan 7,Quan 10,Binh Thanh,Phu Nhuan,Tan Binh,Go Vap,Thu Duc">
+        <div class="mat-mdc-select-trigger"><span class="val">Chon...</span><span>▾</span></div>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field class="mat-mdc-form-field">
+      <mat-label>Truong dai hoc (matAutocomplete)</mat-label>
+      <input id="school" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false"
+        class="mat-mdc-input-element mat-mdc-autocomplete-trigger" placeholder="Go de tim..." autocomplete="off"
+        data-options="Bach Khoa TP.HCM,Khoa hoc Tu nhien,Cong nghe Thong tin,Kinh te TP.HCM,Su pham Ky thuat,Ton Duc Thang,FPT University,RMIT Vietnam" />
+    </mat-form-field>
+
+    <mat-form-field class="mat-mdc-form-field">
+      <mat-label>Ngon ngu (mat-chip-grid + matAutocomplete)</mat-label>
+      <mat-chip-grid id="langs" class="mat-mdc-chip-grid" role="grid" aria-label="Ngon ngu"></mat-chip-grid>
+      <input id="lang-input" role="combobox" aria-autocomplete="list" aria-expanded="false"
+        class="mat-mdc-chip-input mat-mdc-input-element mat-mdc-autocomplete-trigger" placeholder="Them ngon ngu..." autocomplete="off"
+        data-options="Tieng Viet,English,Nhat,Han,Phap,Duc,Trung" data-chips="langs" />
+    </mat-form-field>
+
+    <mat-form-field class="mat-mdc-form-field">
+      <mat-label>Ngay bat dau (matDatepicker)</mat-label>
+      <input id="start" class="mat-mdc-input-element mat-datepicker-input" placeholder="dd/mm/yyyy" aria-haspopup="dialog" autocomplete="off" />
+      <span class="hint" id="start-parsed"></span>
+    </mat-form-field>
+
     <h2>Tep dinh kem</h2>
     <label for="cv">CV (PDF)</label>
     <input type="file" id="cv" accept=".pdf,.doc,.docx" />
@@ -126,6 +159,8 @@
         openFor = null;
       }
 
+      const slugify = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
       document.querySelectorAll('mat-select').forEach((sel) => {
         sel.selectedValues = [];
         const trigger = sel.querySelector('.mat-mdc-select-trigger');
@@ -139,7 +174,37 @@
           const list = document.createElement('div');
           list.setAttribute('role', 'listbox');
           if (sel.hasAttribute('multiple')) list.setAttribute('aria-multiselectable', 'true');
-          sel.dataset.options.split(',').forEach((label) => {
+          let filter = '';
+          if (sel.dataset.search) {
+            // ngx-mat-select-search: o tim kiem nam trong mot mat-option
+            const so = document.createElement('mat-option');
+            so.className = 'contains-mat-select-search';
+            so.setAttribute('role', 'option');
+            so.setAttribute('aria-disabled', 'true');
+            const si = document.createElement('input');
+            si.className = 'mat-select-search-input';
+            si.placeholder = 'Tim kiem...';
+            si.addEventListener('click', (ev) => ev.stopPropagation());
+            si.addEventListener('input', () => {
+              filter = slugify(si.value);
+              render();
+            });
+            so.appendChild(si);
+            list.appendChild(so);
+          }
+          const render = () => {
+            list.querySelectorAll('mat-option:not(.contains-mat-select-search)').forEach((n) => n.remove());
+            const labels = sel.dataset.options.split(',').filter((l) => !filter || slugify(l).includes(filter));
+            if (!labels.length) {
+              const none = document.createElement('mat-option');
+              none.className = 'mat-select-search-no-entries-found';
+              none.setAttribute('role', 'option');
+              none.setAttribute('aria-disabled', 'true');
+              none.textContent = 'Khong tim thay';
+              list.appendChild(none);
+              return;
+            }
+            labels.forEach((label) => {
             const o = document.createElement('mat-option');
             o.setAttribute('role', 'option');
             o.textContent = label;
@@ -159,7 +224,9 @@
               sel.dispatchEvent(new Event('change', { bubbles: true }));
             });
             list.appendChild(o);
-          });
+            });
+          };
+          render();
           pane.appendChild(list);
           const r = trigger.getBoundingClientRect();
           pane.style.left = r.left + 'px';
@@ -171,6 +238,67 @@
 
       document.addEventListener('click', () => closePanel());
       document.addEventListener('keydown', (e) => e.key === 'Escape' && closePanel());
+
+      /* --- Mo phong matAutocomplete (don va chip) --- */
+      document.querySelectorAll('input[role="combobox"][data-options]').forEach((inp) => {
+        const chips = inp.dataset.chips ? document.getElementById(inp.dataset.chips) : null;
+        inp.selected = [];
+        const open = () => {
+          closePanel();
+          openFor = inp;
+          const q = slugify(inp.value);
+          const labels = inp.dataset.options.split(',').filter((l) => !q || slugify(l).includes(q));
+          if (!labels.length) return;
+          const pane = document.createElement('div');
+          pane.className = 'cdk-overlay-pane';
+          const list = document.createElement('div');
+          list.className = 'mat-mdc-autocomplete-panel';
+          list.setAttribute('role', 'listbox');
+          labels.forEach((label) => {
+            const o = document.createElement('mat-option');
+            o.setAttribute('role', 'option');
+            o.textContent = label;
+            o.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              if (chips) {
+                if (!inp.selected.includes(label)) {
+                  inp.selected.push(label);
+                  const c = document.createElement('mat-chip-row');
+                  c.className = 'mat-mdc-chip';
+                  c.textContent = label;
+                  chips.appendChild(c);
+                }
+                inp.value = '';
+              } else {
+                inp.value = label;
+                inp.selected = [label];
+              }
+              inp.dispatchEvent(new Event('input', { bubbles: true }));
+              inp.dispatchEvent(new Event('change', { bubbles: true }));
+              closePanel();
+            });
+            list.appendChild(o);
+          });
+          pane.appendChild(list);
+          const r = inp.getBoundingClientRect();
+          pane.style.left = r.left + 'px';
+          pane.style.top = r.bottom + 4 + 'px';
+          pane.style.width = r.width + 'px';
+          overlay.appendChild(pane);
+          inp.setAttribute('aria-expanded', 'true');
+        };
+        // panel chi hien khi da go it nhat 1 ky tu (giong autocomplete that)
+        inp.addEventListener('input', () => (inp.value ? open() : closePanel()));
+        inp.addEventListener('click', (e) => e.stopPropagation());
+      });
+
+      /* --- Mo phong matDatepicker: parse dd/mm/yyyy --- */
+      const start = document.getElementById('start');
+      start.addEventListener('change', () => {
+        const m = start.value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        start.dataset.iso = m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+        document.getElementById('start-parsed').textContent = m ? `parsed: ${start.dataset.iso}` : 'khong hop le (can dd/mm/yyyy)';
+      });
 
       /* --- Web component voi shadow DOM --- */
       class MyWidget extends HTMLElement {
