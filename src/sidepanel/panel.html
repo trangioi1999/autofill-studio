@@ -122,8 +122,9 @@
 
     <footer class="composer">
       <div class="modes" role="group" aria-label="Che do">
-        <button data-mode="fill" class="on">Dien form</button>
-        <button data-mode="agent">Agent</button>
+        <button data-mode="fill" class="on" title="Quet form, hoi AI mot lan, dien">Dien form</button>
+        <button data-mode="agent" title="Nhieu buoc, nhieu trang — AI dieu khien">Agent</button>
+        <button data-mode="random" title="Khong goi AI: dropdown chon ngau nhien, so ngau nhien, text lay theo nhan">Ngau nhien</button>
       </div>
 
       <div class="chips">
@@ -131,9 +132,9 @@
         <span id="usage" class="chip usage hide" title="Token da dung trong phien nay"></span>
         <button id="btn-scan" class="chip act">Quet</button>
         <button id="btn-map" class="chip act">Ban do</button>
-        <button id="btn-highlight" class="chip act">Danh dau</button>
-        <button id="btn-pick" class="chip act">Chon element</button>
-        <button id="btn-clear" class="chip act">Xoa overlay</button>
+        <button id="btn-highlight" class="chip act tog" title="Bat/tat khung danh so cac o tren trang">Danh dau</button>
+        <button id="btn-pick" class="chip act tog" title="Bat/tat che do chon element (Esc de thoat)">Chon element</button>
+        <button id="btn-clear" class="chip act hide" title="Tat het overlay tren trang">✕ Xoa</button>
       </div>
       <div class="input-wrap">
         <textarea

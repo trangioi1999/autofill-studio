@@ -30,6 +30,7 @@ const FIELDS = {
   deepScan: '#deepScan',
   cdpMode: '#cdpMode',
   stopOnError: '#stopOnError',
+  randomGaps: '#randomGaps',
   autoSaveSnapshot: '#autoSaveSnapshot',
   autoSuggestSnapshot: '#autoSuggestSnapshot',
   typeDelay: '#typeDelay',

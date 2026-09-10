@@ -65,7 +65,7 @@
   /* ------------------------------------------------------------- primitives */
 
   async function focus(el) {
-    AF.scrollIntoView(el);
+    await AF.scrollIntoView(el);
     try {
       el.focus({ preventScroll: true });
     } catch {
@@ -81,7 +81,7 @@
   }
 
   async function clickEl(el, { pointer = true } = {}) {
-    AF.scrollIntoView(el);
+    await AF.scrollIntoView(el);
     await AF.waitStable(el, { timeout: 600 });
     const r = AF.rectOf(el);
     const x = r.left + r.width / 2;
@@ -549,6 +549,10 @@
       const ready = await AF.Locator.ready(el, { timeout: step.timeout ?? 5000 });
       if (!ready && step.action !== 'upload')
         return { ok: false, action: step.action, label, error: 'Element chua san sang (an/disabled)' };
+      // Cuon toi o (chi khi no ngoai khung nhin) roi truot con tro toi do,
+      // de nguoi dung thay engine dang o dau.
+      await AF.scrollIntoView(el);
+      if (AF.Picker) AF.Picker.cursor(el);
     }
 
     let res;
@@ -587,7 +591,7 @@
           res = { ok: await press(el, step.value || 'Enter') };
           break;
         case 'scroll':
-          AF.scrollIntoView(el);
+          await AF.scrollIntoView(el);
           res = { ok: true };
           break;
         default:
@@ -626,11 +630,17 @@
 
     async runPlan(steps, { stopOnError = false, stepDelay = 60 } = {}) {
       const results = [];
-      for (const s of steps) {
-        const r = await runStep(s);
-        results.push({ ...r, step: s });
-        if (!r.ok && stopOnError) break;
-        if (stepDelay) await AF.sleep(stepDelay);
+      // Nhip deu giua cac buoc de mat theo kip; reduced-motion thi chay nhanh
+      const gap = AF.reducedMotion() ? Math.min(stepDelay, 30) : Math.max(stepDelay, 140);
+      try {
+        for (const s of steps) {
+          const r = await runStep(s);
+          results.push({ ...r, step: s });
+          if (!r.ok && stopOnError) break;
+          if (gap) await AF.sleep(gap);
+        }
+      } finally {
+        if (AF.Picker) AF.Picker.cursorOff();
       }
       return results;
     },

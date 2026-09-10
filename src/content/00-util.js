@@ -177,9 +177,32 @@
     return el === top || el.contains(top) || (top.contains && top.contains(el));
   };
 
-  AF.scrollIntoView = (el) => {
+  AF.reducedMotion = () => {
     try {
-      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+      return matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+      return false;
+    }
+  };
+
+  /** Element da nam gon trong khung nhin (chua le mep) chua? */
+  AF.inViewport = (el, margin = 48) => {
+    const r = AF.rectOf(el);
+    if (r.width <= 0 && r.height <= 0) return false;
+    return r.top >= margin && r.bottom <= innerHeight - margin && r.left >= 0 && r.right <= innerWidth;
+  };
+
+  /**
+   * Cuon toi element. Chi cuon khi no chua nam trong khung nhin — truoc day
+   * moi buoc deu nhay "center" tuc thi nen trang giat lien tuc. Cuon muot va
+   * doi cho on dinh roi moi tra ve; { instant: true } de cuon ngay (CDP can
+   * toa do dung ngay lap tuc).
+   */
+  AF.scrollIntoView = async (el, { instant = false } = {}) => {
+    if (AF.inViewport(el)) return false;
+    const smooth = !instant && !AF.reducedMotion();
+    try {
+      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: smooth ? 'smooth' : 'instant' });
     } catch {
       try {
         el.scrollIntoView();
@@ -187,6 +210,8 @@
         /* noop */
       }
     }
+    if (smooth) await AF.waitStable(el, { timeout: 700 });
+    return true;
   };
 
   /**
