@@ -94,7 +94,7 @@ Biến môi trường `AF_PORT` `AF_TOKEN` `AF_BACKEND` `AF_CMD` `AF_OLLAMA` v�
 
 Cổng 8765 bị chiếm thì bridge nói thẳng và gợi ý `--port 8766`. CLI chưa đăng nhập thì lỗi trả về kèm đúng lệnh đăng nhập (`claude` → `/login`, `gemini` → `/auth`, `kiro login`).
 
-**Về Kiro:** AWS đã đổi tên Amazon Q Developer CLI thành **Kiro CLI**, binary từ `q` sang `kiro`. Bridge dò lần lượt `kiro` → `kiro-cli` → `q` nên bản nào cũng chạy, và `model` nhận cả `kiro` lẫn `q`. Đăng nhập:
+**Về Kiro:** AWS đã đổi tên Amazon Q Developer CLI thành **Kiro CLI**, binary từ `q` sang `kiro`. Bridge dò lần lượt `kiro-cli` → `kiro` → `q` (`kiro-cli.exe` là CLI thật; `kiro.cmd` trên Windows có thể chỉ là shim mở IDE, không nhận `chat`) nên bản nào cũng chạy, và `model` nhận cả `kiro` lẫn `q`. Đăng nhập:
 
 ```bash
 # macOS
