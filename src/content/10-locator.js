@@ -62,6 +62,10 @@
       }
     }
 
+    // O nam trong bang (mat-table form): nhan la tieu de cot, khong phai placeholder
+    const th = tableHeaderOf(el);
+    if (th) return th;
+
     // placeholder / title / name
     const ph = el.getAttribute && (el.getAttribute('placeholder') || el.getAttribute('title'));
     if (ph) return AF.norm(ph);
@@ -79,6 +83,38 @@
 
     return '';
   };
+
+  /**
+   * Input trong <td> cua mat-table / cdk-table: tim <th> cung cot qua class
+   * mat-column-X / cdk-column-X, khong co thi theo vi tri cot. Bo dau * bat buoc.
+   */
+  const tableHeaderOf = (el) => {
+    const cell = AF.closestDeep(el, 'td,th,[role="cell"],[role="gridcell"],mat-cell,.mat-mdc-cell,.cdk-cell');
+    if (!cell) return '';
+    const table = AF.closestDeep(cell, 'table,[role="table"],[role="grid"],mat-table,.mat-mdc-table,.cdk-table');
+    if (!table) return '';
+    const clean = (t) => AF.norm(String(t || '').replace(/\*/g, '')).slice(0, 140);
+    const col = (cell.className || '').match(/(?:mat|cdk)-column-([\w-]+)/);
+    if (col) {
+      const th = table.querySelector(`.mat-column-${CSS.escape(col[1])}[role="columnheader"], th.mat-column-${CSS.escape(col[1])}, .cdk-column-${CSS.escape(col[1])}[role="columnheader"], th.cdk-column-${CSS.escape(col[1])}, mat-header-cell.mat-column-${CSS.escape(col[1])}`);
+      if (th) {
+        const t = clean(th.textContent);
+        if (t) return t;
+      }
+    }
+    const row = cell.parentElement;
+    if (row) {
+      const idx = [...row.children].indexOf(cell);
+      const head = table.querySelector('thead tr, [role="rowgroup"] [role="row"], mat-header-row, .mat-mdc-header-row');
+      const hc = head && head.children[idx];
+      if (hc) {
+        const t = clean(hc.textContent);
+        if (t) return t;
+      }
+    }
+    return '';
+  };
+  AF.tableHeaderOf = tableHeaderOf;
 
   AF.accessibleName = (el) => {
     if (!el) return '';

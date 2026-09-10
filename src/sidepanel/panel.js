@@ -695,10 +695,16 @@ chrome.runtime.onMessage.addListener((m) => {
 
   if (m.phase === 'generate') ev(m.message || 'Dang hoi AI...');
 
+  if (m.phase === 'pass') {
+    finishEv();
+    ev(m.message || `Luot ${m.pass}: ${m.count} o vua duoc mo khoa`, { kind: 'idle' });
+  }
+
   if (m.phase === 'planned') {
-    state.steps = m.steps || [];
-    state.skipped = m.skipped || [];
-    state.results = [];
+    const extra = (m.pass || 1) > 1; // luot 2+: noi them, khong thay the ke hoach dau
+    state.steps = extra ? state.steps.concat(m.steps || []) : m.steps || [];
+    state.skipped = extra ? state.skipped.concat(m.skipped || []) : m.skipped || [];
+    if (!extra) state.results = [];
     state.planSource = m.source === 'memory' ? 'memory' : m.source === 'random' ? 'random' : 'ai';
     renderPlan();
     finishEv();
@@ -711,8 +717,8 @@ chrome.runtime.onMessage.addListener((m) => {
         state.planSource === 'memory'
           ? `Ghep tu ban luu "${m.snapshot?.name || ''}"`
           : state.planSource === 'random'
-          ? `Sinh du lieu thu cho ${state.steps.length} o (khong goi AI)`
-          : `AI de xuat gia tri cho ${state.steps.length} o`
+          ? `Sinh du lieu thu cho ${extra ? (m.steps || []).length : state.steps.length} o (khong goi AI)`
+          : `AI de xuat gia tri cho ${extra ? (m.steps || []).length : state.steps.length} o`
       )
     );
     if (state.skipped.length) card.append(el('div', 'meta', `Bo qua ${state.skipped.length} o`));
@@ -725,12 +731,13 @@ chrome.runtime.onMessage.addListener((m) => {
     if (m.usage) addUsage(m.usage);
     if (m.usage?.total) card.append(el('div', 'meta', `${fmtTok(m.usage.total)} token cho lan goi nay`));
 
+    const n = extra ? (m.steps || []).length : state.steps.length;
     ev(
       state.planSource === 'memory'
-        ? `Lay ${state.steps.length} gia tri tu bo nho`
+        ? `Lay ${n} gia tri tu bo nho`
         : state.planSource === 'random'
-        ? `Sinh ${state.steps.length} gia tri thu`
-        : `AI tra ve ${state.steps.length} buoc`,
+        ? `${extra ? `Luot ${m.pass}: ` : ''}Sinh ${n} gia tri thu`
+        : `${extra ? `Luot ${m.pass}: ` : ''}AI tra ve ${n} buoc`,
       { kind: 'ok', ms: m.ms || null, card }
     );
   }
@@ -738,12 +745,13 @@ chrome.runtime.onMessage.addListener((m) => {
   if (m.phase === 'run') ev(m.message || 'Dang dien...');
 
   if (m.phase === 'done') {
-    state.results = m.results || [];
+    const extra = (m.pass || 1) > 1;
+    state.results = extra ? state.results.concat(m.results || []) : m.results || [];
     renderPlan();
     finishEv();
     const all = m.ok === m.total && m.total > 0;
-    const fails = state.results.filter((x) => !x.ok);
-    ev(`Dien xong ${m.ok}/${m.total} o`, {
+    const fails = (m.results || []).filter((x) => !x.ok);
+    ev(`${extra ? `Luot ${m.pass}: ` : ''}Dien xong ${m.ok}/${m.total} o`, {
       kind: m.total === 0 ? 'err' : all ? 'ok' : 'err',
       detail: fails.length
         ? fails.slice(0, 6).map((r) => `✕ ${r.step?.label || ''} — ${r.error || ''}`).join('\n')

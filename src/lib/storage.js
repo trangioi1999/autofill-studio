@@ -46,6 +46,8 @@ export const DEFAULTS = {
   // O co danh sach lua chon (dropdown / multi / radio) ma AI bo trong hoac dua
   // gia tri khong khop -> tu chon ngau nhien, de form khong bi thieu
   randomGaps: true,
+  // Sau khi dien, quet lai: o vua duoc mo khoa (phu thuoc o khac) thi dien tiep, toi da 2 luot
+  fillDependents: true,
 
   // Agent
   agentMaxSteps: 12,

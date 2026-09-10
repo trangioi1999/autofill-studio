@@ -18,6 +18,11 @@
       .mdc-checkbox__background { position: absolute; inset: 0; border: 2px solid #666; border-radius: 3px; }
       .mdc-checkbox__native-control:checked + .mdc-checkbox__background { background: #6750a4; }
       .mat-mdc-chip-grid { display: flex; flex-wrap: wrap; gap: 4px; min-height: 8px; }
+      #doc-table { width: 100%; border-collapse: collapse; }
+      #doc-table th { text-align: left; font-size: 12px; color: #666; padding: 4px; }
+      #doc-table td { padding: 4px; }
+      #doc-table input { width: 100%; box-sizing: border-box; }
+      #doc-table input:disabled { background: #f3f3f3; }
       .mat-mdc-chip { background: #e8e6ff; border-radius: 999px; padding: 2px 10px; font-size: 12px; }
       .contains-mat-select-search input { width: 100%; box-sizing: border-box; padding: 6px 8px; }
       body { font: 14px/1.6 system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
@@ -147,6 +152,32 @@
     <div class="col-lg-6 col-md-12 pb-3 align-items-center ng-star-inserted"><mat-radio-group role="radiogroup" class="mat-mdc-radio-group" id="gender"><mat-label class="mx-1">Gioi tinh <span class="text-danger ng-star-inserted">*</span><!----></mat-label><mat-radio-button color="primary" class="mat-mdc-radio-button mx-1 mat-primary" id="mat-radio-0"><div mat-internal-form-field="" class="mdc-form-field mat-internal-form-field"><div class="mdc-radio"><div aria-hidden="true" class="mat-mdc-radio-touch-target"></div><input type="radio" aria-invalid="false" class="mdc-radio__native-control" id="mat-radio-0-input" required="" name="ng.form0.gender" value="MALE" tabindex="0"><div aria-hidden="true" class="mdc-radio__background"><div class="mdc-radio__outer-circle"></div><div class="mdc-radio__inner-circle"></div></div><div mat-ripple="" aria-hidden="true" class="mat-ripple mat-radio-ripple mat-focus-indicator"><div class="mat-ripple-element mat-radio-persistent-ripple"></div></div></div><label class="mdc-label" for="mat-radio-0-input">Nam</label></div></mat-radio-button><mat-radio-button color="primary" class="mat-mdc-radio-button mx-1 mat-primary" id="mat-radio-1"><div mat-internal-form-field="" class="mdc-form-field mat-internal-form-field"><div class="mdc-radio"><div aria-hidden="true" class="mat-mdc-radio-touch-target"></div><input type="radio" aria-invalid="false" class="mdc-radio__native-control" id="mat-radio-1-input" required="" name="ng.form0.gender" value="FEMALE" tabindex="0"><div aria-hidden="true" class="mdc-radio__background"><div class="mdc-radio__outer-circle"></div><div class="mdc-radio__inner-circle"></div></div><div mat-ripple="" aria-hidden="true" class="mat-ripple mat-radio-ripple mat-focus-indicator"><div class="mat-ripple-element mat-radio-persistent-ripple"></div></div></div><label class="mdc-label" for="mat-radio-1-input">Nu</label></div></mat-radio-button></mat-radio-group><!----></div>
 
     <div class="pb-3"><mat-checkbox class="mat-mdc-checkbox" id="newsletter"><div class="mdc-form-field"><div class="mdc-checkbox"><input type="checkbox" class="mdc-checkbox__native-control" id="newsletter-input" /><div class="mdc-checkbox__background"></div></div><label class="mdc-label" for="newsletter-input">Nhan ban tin (mat-checkbox MDC)</label></div></mat-checkbox></div>
+
+    <h2>Bang form (mat-table) co o phu thuoc</h2>
+    <p class="hint">Chon "Loai chung tu" xong thi 4 o sau moi duoc mo khoa — giong lib-material-table-form.</p>
+    <table class="mat-mdc-table" role="table" id="doc-table">
+      <thead role="rowgroup">
+        <tr role="row" class="mat-mdc-header-row">
+          <th role="columnheader" class="mat-mdc-header-cell mat-column-docType">Loai chung tu <span class="required-asterisk">*</span></th>
+          <th role="columnheader" class="mat-mdc-header-cell mat-column-identifierCode">So dinh danh <span class="required-asterisk">*</span></th>
+          <th role="columnheader" class="mat-mdc-header-cell mat-column-issueDate">Ngay cap <span class="required-asterisk">*</span></th>
+          <th role="columnheader" class="mat-mdc-header-cell mat-column-expirationDate">Ngay het han</th>
+          <th role="columnheader" class="mat-mdc-header-cell mat-column-issuePlace">Noi cap <span class="required-asterisk">*</span></th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        <tr role="row" class="mat-mdc-row">
+          <td role="cell" class="mat-mdc-cell mat-column-docType">
+            <input id="docType" type="text" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" class="mat-mdc-autocomplete-trigger mat-mdc-input-element" placeholder="Loai chung tu" autocomplete="off"
+              data-options="Can cuoc cong dan,Chung minh nhan dan,Ho chieu,Chung minh sy quan quan doi" data-unlocks="doc-table" />
+          </td>
+          <td role="cell" class="mat-mdc-cell mat-column-identifierCode"><input class="mat-mdc-input-element" name="ng.form3.identifierCode" id="identifierCode" disabled required /></td>
+          <td role="cell" class="mat-mdc-cell mat-column-issueDate"><input class="mat-mdc-input-element mat-datepicker-input" placeholder="DD/MM/YYYY" id="issueDate" name="ng.form3.issueDate" disabled required aria-haspopup="dialog" max="2026-09-10" /></td>
+          <td role="cell" class="mat-mdc-cell mat-column-expirationDate"><input class="mat-mdc-input-element mat-datepicker-input" placeholder="DD/MM/YYYY" id="expirationDate" name="ng.form3.expirationDate" disabled aria-haspopup="dialog" /></td>
+          <td role="cell" class="mat-mdc-cell mat-column-issuePlace"><input class="mat-mdc-input-element" name="ng.form3.issuePlace" id="issuePlace" disabled required /></td>
+        </tr>
+      </tbody>
+    </table>
 
     <h2>Tep dinh kem</h2>
     <label for="cv">CV (PDF)</label>
@@ -306,6 +337,15 @@
         };
         // panel chi hien khi da go it nhat 1 ky tu (giong autocomplete that)
         inp.addEventListener('input', () => (inp.value ? open() : closePanel()));
+        // chon xong thi mo khoa cac o disabled cung bang (field phu thuoc)
+        if (inp.dataset.unlocks) {
+          inp.addEventListener('change', () => {
+            if (!inp.selected.length) return;
+            setTimeout(() => {
+              document.querySelectorAll(`#${inp.dataset.unlocks} input[disabled]`).forEach((n) => n.removeAttribute('disabled'));
+            }, 250);
+          });
+        }
         inp.addEventListener('click', (e) => e.stopPropagation());
       });
 

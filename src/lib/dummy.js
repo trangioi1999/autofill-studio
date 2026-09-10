@@ -56,6 +56,36 @@ const fmtDate = (d, fmt) =>
     .replace(/dd/i, pad(d.getDate()));
 const dateBetween = (y1, y2) => new Date(between(y1, y2), rnd(12), between(1, 28));
 const dateAround = (days) => new Date(Date.now() + between(-days, days) * 864e5);
+const daysFromNow = (a, b) => new Date(Date.now() + between(a, b) * 864e5);
+
+/** "2026-09-10" | "10/09/2026" -> Date, hoac null. */
+const parseDate = (v) => {
+  const t = String(v || '').trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  return null;
+};
+
+/**
+ * Chon ngay hop ly theo nhan: ngay sinh -> 1980-2005; "ngay cap" / "bat dau"
+ * -> qua khu; "het han" / "ket thuc" -> tuong lai; con lai quanh hom nay.
+ * Luon nam trong [min, max] cua input neu co.
+ */
+const dateFor = (f, h) => {
+  let d;
+  if (has(h, /sinh|birth|\bdob\b/)) d = dateBetween(1980, 2005);
+  else if (has(h, /het han|expir|ket thuc|end date|den ngay|due|deadline|han su dung|valid (to|until)/)) d = daysFromNow(30, 1095);
+  else if (has(h, /ngay cap|issue|bat dau|start|tu ngay|hieu luc|effective|ky|sign|nhap|join|tot nghiep|graduat/)) d = daysFromNow(-3650, -30);
+  else d = dateAround(30);
+  const min = parseDate(f.min);
+  const max = parseDate(f.max);
+  if (max && d > max) d = new Date(max.getTime() - between(0, 365) * 864e5);
+  if (min && d < min) d = new Date(min.getTime() + between(0, 365) * 864e5);
+  if (max && d > max) d = max;
+  return d;
+};
 
 /* ------------------------------------------------------------ heuristics */
 
@@ -140,14 +170,15 @@ function textFor(f, h) {
   if (has(h, /chuc danh|chuc vu|job ?title|position|vi tri|role/)) return pick(TITLE);
   if (has(h, /ma buu|zip|postal/)) return digits(5);
   if (has(h, /ma so thue|tax/)) return digits(10);
-  if (has(h, /cmnd|cccd|can cuoc|chung minh|identity|id ?number|passport|ho chieu/)) return digits(12);
+  if (has(h, /cmnd|cccd|can cuoc|chung minh|identity|id ?number|passport|ho chieu|so dinh danh|dinh danh|so giay to|identifier|so the/)) return digits(12);
+  if (has(h, /noi cap|issued? (by|at|place)|place of issue|co quan cap/))
+    return pick(['Cục Cảnh sát QLHC về TTXH', 'Công an TP. Hồ Chí Minh', 'Công an TP. Hà Nội', 'Công an TP. Đà Nẵng']);
   if (has(h, /tai khoan|account ?number|so tk|bank/)) return digits(12);
   if (has(h, /username|tai khoan|user ?name|ten dang nhap/)) return `${slug(pick(FIRST))}${between(100, 999)}`;
   if (has(h, /tuoi|\bage\b/)) return String(between(18, 60));
   if (has(h, /nam sinh|birth ?year/)) return String(between(1980, 2005));
   // o text nhap ngay: theo dinh dang cua o, mac dinh dd/mm/yyyy (VN)
-  if (has(h, /ngay|date|\bdob\b|birthday|sinh nhat/))
-    return fmtDate(has(h, /sinh|birth|dob/) ? dateBetween(1980, 2005) : dateAround(30), f.dateFormat || 'dd/mm/yyyy');
+  if (has(h, /ngay|date|\bdob\b|birthday|sinh nhat/)) return fmtDate(dateFor(f, h), f.dateFormat || 'dd/mm/yyyy');
   if (has(h, /gio|time/)) return `${pad(between(8, 17))}:${pad(rnd(4) * 15)}`;
   if (has(h, /so luong|quantity|\bqty\b|so nguoi|kinh nghiem|years?/)) return String(between(1, 10));
   if (has(h, /luong|salary|thu nhap/)) return String(between(10, 50) * 1000000);
@@ -165,6 +196,25 @@ function textFor(f, h) {
 }
 
 /* -------------------------------------------------------------- public */
+
+/** Khoa on dinh cua mot o giua hai lan quet (afId sinh moi moi lan). */
+export const fieldKey = (f) => `${f.frameId ?? 0}:${f.name || f.selector || f.id}`;
+
+/**
+ * Sau khi dien xong mot luot, quet lai: o nao truoc do disabled (hoac chua co)
+ * ma gio da mo khoa va con trong -> can dien tiep. Dung cho form co field
+ * phu thuoc (chon "Loai chung tu" xong moi mo "So dinh danh", "Ngay cap"...).
+ */
+export function newlyEnabled(prevFields, nowFields) {
+  const prev = new Map(prevFields.map((f) => [fieldKey(f), f]));
+  return nowFields.filter((f) => {
+    if (f.disabled || isSensitive(f)) return false;
+    const was = prev.get(fieldKey(f));
+    if (was && !was.disabled) return false; // da co tu dau -> khong dien lai
+    if (f.currentValue) return false; // app tu dien roi
+    return true;
+  });
+}
 
 /**
  * Sinh gia tri thu cho mot field da quet. Tra ve { value, note } hoac null neu
@@ -194,8 +244,7 @@ export function dummyValue(f) {
     return { value: sample(opts, k).map(optLabel).join('|'), note: `ngau nhien ${k}/${opts.length}` };
   }
   if (kind === 'datepicker') {
-    const d = has(h, /sinh|birth|dob/) ? dateBetween(1980, 2005) : dateAround(30);
-    return { value: fmtDate(d, f.dateFormat || 'dd/mm/yyyy'), note: `ngay ${f.dateFormat || 'dd/mm/yyyy'}` };
+    return { value: fmtDate(dateFor(f, h), f.dateFormat || 'dd/mm/yyyy'), note: `ngay ${f.dateFormat || 'dd/mm/yyyy'}` };
   }
   if (kind === 'radio' || kind === 'radiogroup') {
     const opts = realOptions(f);
@@ -214,7 +263,7 @@ export function dummyValue(f) {
   if (kind === 'number' || kind === 'range') return { value: numberFor(f, h), note: 'so ngau nhien' };
   if (kind === 'date') {
     const t = String(f.type || 'date');
-    const d = has(h, /sinh|birth|dob/) ? dateBetween(1980, 2005) : dateAround(30);
+    const d = dateFor(f, h);
     let v = isoDate(d);
     if (t === 'time') v = `${pad(between(8, 17))}:${pad(rnd(4) * 15)}`;
     else if (t === 'month') v = v.slice(0, 7);
