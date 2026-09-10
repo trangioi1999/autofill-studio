@@ -202,11 +202,32 @@ function run(cmd, args, input) {
  * Duong dan day du quan trong tren Windows: ta can biet no la .exe hay .cmd
  * de quyet dinh co phai di qua cmd.exe hay khong.
  */
+/**
+ * Tren Windows, `where claude` thuong tra ve nhieu dong:
+ *   C:\Users\x\AppData\Roaming\npm\claude        <- script bash cho Git Bash, Node KHONG spawn duoc (ENOENT)
+ *   C:\Users\x\AppData\Roaming\npm\claude.cmd    <- cai chay duoc
+ * Nen phai chon dong co duoi thuc thi (.exe > .com > .cmd > .bat theo PATHEXT),
+ * khong lay dong dau tien.
+ */
+function pickWinBinary(lines) {
+  const exts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  // .exe truoc .cmd: chay truc tiep, khong phai qua cmd.exe
+  const order = ['.exe', '.com', '.cmd', '.bat', ...exts];
+  for (const ext of order) {
+    const hit = lines.find((l) => l.toLowerCase().endsWith(ext));
+    if (hit) return hit;
+  }
+  return lines[0] || null;
+}
+
 const which = async (cmd) => {
   try {
     const out = await run(IS_WIN ? 'where' : 'which', [cmd]);
-    const first = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0];
-    return first || null;
+    const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    return IS_WIN ? pickWinBinary(lines) : lines[0] || null;
   } catch {
     return null;
   }
@@ -221,7 +242,9 @@ const which = async (cmd) => {
 const BIN_CANDIDATES = {
   claude: ['claude'],
   gemini: ['gemini'],
-  kiro: ['kiro', 'kiro-cli', 'q'], // Kiro CLI moi truoc, Amazon Q Developer cu sau
+  // kiro-cli.exe truoc: do la CLI that. `kiro.cmd` tren Windows co the chi la
+  // shim mo IDE Kiro, khong nhan `chat`. `q` la ban Amazon Q Developer cu.
+  kiro: ['kiro-cli', 'kiro', 'q'],
 };
 
 /** Ten hien thi + cach dang nhap, de bao loi cho dung cho. */
