@@ -282,10 +282,13 @@
 
     /** Kiem tra "actionability" giong Playwright truoc khi thao tac. */
     async ready(el, { timeout = 5000, requireHit = false } = {}) {
-      const ok = await AF.waitFor(
-        () => AF.isConnected(el) && (AF.isVisible(el) || AF.isFileInput(el)) && AF.isEnabled(el),
-        { timeout }
-      );
+      // radio/checkbox an (opacity:0) trong widget ve tay: xet host thay vi input
+      const shown = () => {
+        if (AF.isVisible(el) || AF.isFileInput(el)) return true;
+        const h = AF.widgetHostOf && AF.widgetHostOf(el);
+        return !!(h && AF.isVisible(h));
+      };
+      const ok = await AF.waitFor(() => AF.isConnected(el) && shown() && AF.isEnabled(el), { timeout });
       if (!ok) return false;
       AF.scrollIntoView(el);
       await AF.waitStable(el, { timeout: 800 });

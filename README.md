@@ -149,6 +149,12 @@ Nằm trong *Cài đặt → Gemini → Nâng cao*. Với hầu hết người d
 
 **Multi-select** — chọn lần lượt, tự mở lại panel nếu nó đóng sau mỗi lần click, đóng hẳn khi xong.
 
+**Angular Material đã custom** — ba ca hay gặp:
+- `mat-select` có **ô tìm kiếm trong panel** (ngx-mat-select-search): ô search đó nằm trong một `mat-option` nên trước đây bị đọc nhầm thành option, và khi quét thì bị coi là một field text. Giờ option chứa `<input>`, option `aria-disabled`, dòng "Không tìm thấy" đều bị loại; input nằm trong `.cdk-overlay-container` không được tính là field của form.
+- `matAutocomplete` (`<input role="combobox">`, kể cả kèm `mat-chip-grid` để chọn nhiều): trước đây bị xem là ô text nên AI gõ chữ vào mà không chọn option. Giờ nhận diện là `combobox` / `multiselect-custom`. Danh sách chỉ hiện sau khi gõ nên không đọc trước được; lúc điền engine gõ giá trị (hoặc 1–3 ký tự đầu) để lọc rồi click option khớp. Chế độ Ngẫu nhiên và các ô AI bỏ trống: mở panel, gõ thử `a`/`e`/`n` để panel hiện, chọn ngẫu nhiên tại chỗ; multi thì chọn 1–3 mục, mở lại panel sau mỗi chip.
+- `mat-radio-group` / `mat-checkbox` (MDC): input thật bị ẩn bằng `opacity: 0` nằm trong widget vẽ tay, nên trước đây scanner bỏ qua (coi là không nhìn thấy). Giờ input ẩn được xét theo **host nhìn thấy được** (`mat-radio-button`, `.mdc-radio`, `mat-checkbox`…), cả nhóm radio gom thành một field `radiogroup` với nhãn lấy từ `mat-label` (bỏ dấu `*`) và option lấy từ `label[for]` của từng input. Chọn bằng `.click()` native trên input để Angular nhận `change`; "Nữ" khớp "Nu", `MALE` khớp theo value.
+- `matDatepicker` dạng **text `dd/mm/yyyy`**: nhận diện qua class `mat-datepicker-input`, placeholder `dd/mm/yyyy`, `aria-haspopup="dialog"` cạnh `mat-datepicker-toggle`. Scanner báo `dateFormat` cho AI; dù AI hay dữ liệu thử đưa ISO `2026-09-10`, engine đổi sang đúng định dạng của ô (mặc định `dd/mm/yyyy` theo Việt Nam) trước khi gõ. Ô text thường có nhãn "ngày" cũng được đổi như vậy.
+
 **Upload file** — dựng `File` thật bằng `DataTransfer` rồi gán vào `input.files`. Không có input thì bắn `dragenter/dragover/drop` vào dropzone (react-dropzone, ngx-dropzone). Chế độ CDP còn dùng được `DOM.setFileInputFiles` để nạp **file thật từ ổ đĩa**.
 
 **Rich text** — Quill, ProseMirror, Draft, CKEditor inline: dùng `execCommand('insertText')` để editor nhận đúng `beforeinput`.
@@ -436,5 +442,9 @@ testpage/           form thử: Material select, multi-select, shadow DOM, ifram
 **Nguồn dữ liệu** — `source` từ model được giữ nguyên; model quên khai thì mặc định `invented`; schema bắt buộc có `source` và chỉ nhận 4 giá trị hợp lệ.
 
 **Ngẫu nhiên + chuyển động** — extension nạp thật vào Chromium, chế độ Ngẫu nhiên trên `testpage/index.html`: **17/17 ô** trong ~8s, gồm mat-select đơn (1 option), multi (3 option), select native, radio, checkbox, upload, date, và 4 ô trong iframe; con trỏ trượt xuất hiện và di chuyển theo từng ô rồi tự ẩn khi xong; chip Đánh dấu bật → 13 khung trên trang, tắt → 0; chip Chọn element bật → "Đang chọn… (Esc)", bấm lại → huỷ và trả về ngay. `dummy.js`: 14 loại ô sinh đúng loại giá trị, ô mật khẩu/OTP bị bỏ qua, `fillGaps` bù 3 ô AI bỏ trống/đưa sai, option placeholder không bao giờ được chọn (0/50 lần).
+
+**Material MDC radio / checkbox** — markup thật của `mat-radio-group` (input ẩn opacity 0) và `mat-checkbox` trong `testpage`: quét ra đúng một field "Gioi tinh" kind `radiogroup` với option Nam/Nu, không trùng input; chọn "Nữ" → `FEMALE` checked, chọn `MALE` → đổi lại đúng; checkbox host `mat-checkbox` tick được qua input ẩn. Ngẫu nhiên: 23/23 ô.
+
+**Angular Material nâng cao** — 4 widget mới trong `testpage`: mat-select có ô search, matAutocomplete, chip-grid + autocomplete, matDatepicker text. Quét: đúng `combobox` / `multiselect-custom` / `datepicker` với `dateFormat: dd/mm/yyyy`, ô search trong panel không bị tính là field. Ngẫu nhiên: 21/21 ô trong ~13s, autocomplete chọn được option dù panel chỉ hiện sau khi gõ, chip chọn 1–2 mục. Giá trị cụ thể: ISO `2026-09-10` → ô hiện `10/09/2026` và app parse đúng, "Tôn Đức Thắng" / "Phú Nhuận" / `English|Pháp` đều chọn đúng option.
 
 **Bản đồ trang** — `50-snapshot.js` chạy trên `testpage/index.html` thật: đọc đúng 18 element gồm cả shadow DOM, và sau khi hành động thì phản ánh đúng giá trị của mat-select, multi-select, native select, radio, checkbox — không nhầm placeholder (`-- Chọn --`, `Chọn...`) thành giá trị.

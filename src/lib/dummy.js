@@ -47,6 +47,13 @@ const sentence = (n = 8) => {
 };
 const digits = (n) => Array.from({ length: n }, (_, i) => (i === 0 ? between(1, 9) : rnd(10))).join('');
 const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** Date -> theo token "dd/mm/yyyy" | "yyyy-mm-dd" ... */
+const fmtDate = (d, fmt) =>
+  fmt
+    .replace(/yyyy/i, String(d.getFullYear()))
+    .replace(/yy(?!yy)/i, String(d.getFullYear()).slice(2))
+    .replace(/mm/i, pad(d.getMonth() + 1))
+    .replace(/dd/i, pad(d.getDate()));
 const dateBetween = (y1, y2) => new Date(between(y1, y2), rnd(12), between(1, 28));
 const dateAround = (days) => new Date(Date.now() + between(-days, days) * 864e5);
 
@@ -138,7 +145,9 @@ function textFor(f, h) {
   if (has(h, /username|tai khoan|user ?name|ten dang nhap/)) return `${slug(pick(FIRST))}${between(100, 999)}`;
   if (has(h, /tuoi|\bage\b/)) return String(between(18, 60));
   if (has(h, /nam sinh|birth ?year/)) return String(between(1980, 2005));
-  if (has(h, /ngay|date|\bdob\b|birthday/)) return isoDate(dateBetween(1980, 2005));
+  // o text nhap ngay: theo dinh dang cua o, mac dinh dd/mm/yyyy (VN)
+  if (has(h, /ngay|date|\bdob\b|birthday|sinh nhat/))
+    return fmtDate(has(h, /sinh|birth|dob/) ? dateBetween(1980, 2005) : dateAround(30), f.dateFormat || 'dd/mm/yyyy');
   if (has(h, /gio|time/)) return `${pad(between(8, 17))}:${pad(rnd(4) * 15)}`;
   if (has(h, /so luong|quantity|\bqty\b|so nguoi|kinh nghiem|years?/)) return String(between(1, 10));
   if (has(h, /luong|salary|thu nhap/)) return String(between(10, 50) * 1000000);
@@ -170,14 +179,23 @@ export function dummyValue(f) {
 
   if (kind === 'select' || kind === 'combobox') {
     const opts = realOptions(f);
-    if (!opts.length) return null;
+    // autocomplete: danh sach chi hien khi mo/go -> de engine mo panel roi chon
+    if (!opts.length) return kind === 'combobox' ? { value: '', random: true, note: 'mo panel roi chon ngau nhien' } : null;
     return { value: optLabel(pick(opts)), note: `ngau nhien 1/${opts.length}` };
   }
   if (kind === 'multiselect' || kind === 'multiselect-custom') {
     const opts = realOptions(f);
-    if (!opts.length) return null;
+    if (!opts.length) {
+      if (kind !== 'multiselect-custom') return null;
+      const k = between(1, 3);
+      return { value: '', random: true, count: k, note: `mo panel roi chon ngau nhien ${k} muc` };
+    }
     const k = between(1, Math.min(3, opts.length));
     return { value: sample(opts, k).map(optLabel).join('|'), note: `ngau nhien ${k}/${opts.length}` };
+  }
+  if (kind === 'datepicker') {
+    const d = has(h, /sinh|birth|dob/) ? dateBetween(1980, 2005) : dateAround(30);
+    return { value: fmtDate(d, f.dateFormat || 'dd/mm/yyyy'), note: `ngay ${f.dateFormat || 'dd/mm/yyyy'}` };
   }
   if (kind === 'radio' || kind === 'radiogroup') {
     const opts = realOptions(f);
@@ -231,7 +249,7 @@ export function dummyPlan(fields) {
       skipped.push({ id, reason: isSensitive(f) ? 'nhay cam (mat khau / OTP / the)' : 'khong co lua chon de chon' });
       continue;
     }
-    steps.push({ id, action: 'fill', value: v.value, source: 'random', note: v.note });
+    steps.push({ id, action: 'fill', value: v.value, source: 'random', note: v.note, random: !!v.random, count: v.count || 0 });
   }
   return { steps, skipped };
 }
@@ -280,7 +298,7 @@ export function fillGaps(plan, fields) {
     if (f.currentValue) continue;
     const v = dummyValue(f);
     if (!v) continue;
-    plan.steps.push({ id, action: 'fill', value: v.value, source: 'random', note: `AI bo trong -> ${v.note}` });
+    plan.steps.push({ id, action: 'fill', value: v.value, source: 'random', note: `AI bo trong -> ${v.note}`, random: !!v.random, count: v.count || 0 });
     if (skippedIds.has(id)) plan.skipped = plan.skipped.filter((s) => String(s.id) !== id);
     fixed++;
   }

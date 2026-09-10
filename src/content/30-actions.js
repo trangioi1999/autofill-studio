@@ -235,6 +235,9 @@
 
   const isChecked = (el) => {
     if (typeof el.checked === 'boolean' && el.tagName === 'INPUT') return el.checked;
+    // widget bao ngoai (mat-checkbox, p-checkbox...): input that ben trong la nguon su that
+    const inner = el.querySelector && el.querySelector('input[type="checkbox"],input[type="radio"]');
+    if (inner) return !!inner.checked;
     const a = el.getAttribute('aria-checked');
     if (a != null) return a === 'true';
     return /(^|\s)(mat-mdc-checkbox-checked|mat-checked|ant-checkbox-checked|is-checked|checked)(\s|$)/.test(
@@ -288,21 +291,44 @@
       }
     }
     if (!group.length) {
-      const g = AF.closestDeep(el, '[role="radiogroup"],mat-radio-group,fieldset') || el;
-      group = [...g.querySelectorAll('input[type="radio"],mat-radio-button,[role="radio"]')];
+      const g = AF.closestDeep(el, '[role="radiogroup"],mat-radio-group,nz-radio-group,fieldset') || el;
+      // input that truoc (Material MDC: input an opacity:0 nam trong mat-radio-button)
+      group = [...g.querySelectorAll('input[type="radio"]')];
+      if (!group.length) group = [...g.querySelectorAll('mat-radio-button,[role="radio"]')];
     }
     const items = group.map((g) => ({ el: g, label: AF.accessibleName(g) || AF.norm(g.textContent), value: g.value ?? '' }));
     const m = bestOption(items, want);
     if (!m) return false;
     const t = m.el;
+    const host = AF.widgetHostOf(t) || t;
+    await AF.scrollIntoView(host);
+    if (AF.Picker) AF.Picker.cursor(host);
+
     if (t.tagName === 'INPUT') {
-      t.checked = true;
-      fire(t, 'click');
-      fire(t, 'input');
-      fire(t, 'change');
-    } else {
-      await clickEl(t.querySelector('input,label,.mdc-radio') || t);
+      if (t.checked) return true;
+      // .click() native: trinh duyet tu set checked va phat input/change dung
+      // chuan -> MatRadioButton/Angular forms nhan duoc. Khong dispatch click
+      // thu cong sau khi set .checked (se toggle nguoc / khong phat change).
+      try {
+        t.click();
+      } catch {
+        /* noop */
+      }
+      await AF.sleep(60);
+      if (!t.checked) {
+        // widget chan click tren input -> click nhan / vong tron ve tay
+        const lbl = (t.id && t.getRootNode().querySelector(`label[for="${CSS.escape(t.id)}"]`)) || host.querySelector('.mdc-radio,label') || host;
+        await clickEl(lbl);
+        await AF.sleep(60);
+      }
+      if (!t.checked) {
+        t.checked = true;
+        fire(t, 'input');
+        fire(t, 'change');
+      }
+      return t.checked;
     }
+    await clickEl(t.querySelector('input,label,.mdc-radio') || t);
     return true;
   }
 
@@ -335,9 +361,25 @@
     let nodes = [...panel.querySelectorAll(OPTION_SELECTOR)];
     if (!nodes.length && panel.matches && panel.matches(OPTION_SELECTOR)) nodes = [panel];
     return nodes
+      .filter((n) => AF.isRealOption(n) && AF.isVisible(n))
       .map((n) => ({ el: n, value: n.getAttribute('data-value') || '', label: AF.norm(n.textContent) }))
       .filter((o) => o.label);
   };
+
+  /** O tim kiem cua dropdown: trong panel (ngx-mat-select-search, PrimeNG filter), hoac chinh input autocomplete. */
+  const searchBoxFor = (el) => {
+    if (el.tagName === 'INPUT') return el;
+    return (
+      AF.deepQuery(
+        '.cdk-overlay-container input:not([type="checkbox"]):not([type="radio"]), .mat-mdc-select-panel input, .ant-select-dropdown input, .p-dropdown-filter, .p-multiselect-filter, .ng-dropdown-panel input'
+      ) ||
+      (el.querySelector ? el.querySelector('input.ng-input input, input:not([type="hidden"])') : null)
+    );
+  };
+
+  const isOpenOption = (o, chosen) => !chosen.has(AF.slug(o.label)) && o.el.getAttribute('aria-selected') !== 'true';
+
+  const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
   const triggerOf = (el) => {
     if (el.tagName === 'MAT-SELECT') return el.querySelector('.mat-mdc-select-trigger,[role="combobox"]') || el;
@@ -352,12 +394,15 @@
     const trig = triggerOf(el);
     let panel = openPanel();
     if (panel) return panel;
+    // input autocomplete thuong chi hien panel sau khi go -> khong cho lau,
+    // ensurePanelWithOptions se go thu ngay sau do
+    const isInput = el.tagName === 'INPUT';
     await clickEl(trig);
-    panel = await AF.waitFor(() => openPanel(), { timeout: 3000, interval: 60 });
+    panel = await AF.waitFor(() => openPanel(), { timeout: isInput ? 450 : 3000, interval: 60 });
     if (!panel) {
       // thu ban phim
       await press(trig, 'ArrowDown');
-      panel = await AF.waitFor(() => openPanel(), { timeout: 1500 });
+      panel = await AF.waitFor(() => openPanel(), { timeout: isInput ? 350 : 1500 });
     }
     return panel;
   }
@@ -377,33 +422,100 @@
 
   /** Mo dropdown, doc danh sach option, dong lai — dung cho deepScan. */
   async function harvestOptions(el) {
+    // matAutocomplete: danh sach chi hien khi go, va phu thuoc chuoi go ->
+    // khong doc truoc duoc; luc dien se mo panel va chon tai cho.
+    if (el.tagName === 'INPUT') return [];
     const panel = await openDropdown(el);
     const opts = readOptions(panel).map((o) => ({ value: o.value, label: o.label }));
     await closeDropdown(el);
     return opts;
   }
 
-  async function selectCustom(el, values, { multiple = false } = {}) {
-    const wants = Array.isArray(values) ? values : [values];
-    const panel = await openDropdown(el);
+  /**
+   * Mo panel; voi input autocomplete thi panel thuong chi hien sau khi go,
+   * nen go thu vai ky tu (seed) de no hien option.
+   */
+  async function ensurePanelWithOptions(el, seed) {
+    let panel = await openDropdown(el);
+    let opts = readOptions(openPanel() || panel);
+    if (opts.length || el.tagName !== 'INPUT') return { panel, opts };
+    for (const ch of seed) {
+      await typeText(el, ch, { delay: 10 });
+      panel = await AF.waitFor(() => (readOptions(openPanel()).length ? openPanel() : null), { timeout: 1200, interval: 80 });
+      opts = readOptions(panel);
+      if (opts.length) break;
+    }
+    return { panel: panel || openPanel(), opts };
+  }
+
+  /**
+   * Chon trong dropdown custom. values = nhan muon chon (chuoi hoac mang).
+   * random = true: khong biet chon gi, mo panel roi chon ngau nhien `count`
+   * option — dung cho autocomplete ma danh sach chi hien sau khi mo/go.
+   */
+  async function selectCustom(el, values, { multiple = false, random = false, count = 0 } = {}) {
+    const wants = random ? [] : (Array.isArray(values) ? values : [values]).filter((v) => v != null && String(v).trim() !== '');
+    const isInput = el.tagName === 'INPUT';
+
+    if (random || !wants.length) {
+      const { panel, opts } = await ensurePanelWithOptions(el, ['a', 'e', 'n']);
+      if (!panel) return { ok: false, error: 'Khong mo duoc dropdown' };
+      if (!opts.length) {
+        await closeDropdown(el);
+        return { ok: false, error: 'Panel mo nhung khong co option nao de chon' };
+      }
+      const chosen = new Set();
+      const want = multiple ? Math.max(1, Math.min(count || 1 + Math.floor(Math.random() * 3), opts.length)) : 1;
+      let hit = 0;
+      for (let i = 0; i < want; i++) {
+        let cur = readOptions(openPanel() || panel).filter((o) => isOpenOption(o, chosen));
+        if (!cur.length && isInput) {
+          // chip autocomplete: sau khi chon, input trong va panel dong -> go lai
+          const again = await ensurePanelWithOptions(el, ['a', 'e', 'n', 'i']);
+          cur = again.opts.filter((o) => isOpenOption(o, chosen));
+        }
+        if (!cur.length) break;
+        const m = pickRandom(cur);
+        chosen.add(AF.slug(m.label));
+        await clickEl(m.el);
+        hit++;
+        await AF.sleep(120);
+        if (!multiple) break;
+        if (!openPanel()) await openDropdown(el);
+      }
+      await closeDropdown(el);
+      return { ok: hit > 0, filled: hit, random: true, picked: [...chosen] };
+    }
+
+    let panel = await openDropdown(el);
+    if (!panel && isInput) {
+      // autocomplete: go 1-2 ky tu dau cua gia tri de panel hien
+      panel = (await ensurePanelWithOptions(el, [String(wants[0]).slice(0, 1)])).panel;
+    }
     if (!panel) return { ok: false, error: 'Khong mo duoc dropdown' };
 
     let hit = 0;
     const missed = [];
     for (const w of wants) {
-      // panel co the la virtual scroll -> go de loc neu co o tim kiem
+      // panel co the la virtual scroll / autocomplete -> go de loc neu co o tim kiem
       let opts = readOptions(openPanel() || panel);
       let m = bestOption(opts, w);
 
       if (!m) {
-        const search =
-          AF.deepQuery('.cdk-overlay-container input[type="text"], .ant-select-dropdown input, .p-dropdown-filter, .ng-dropdown-panel input') ||
-          (el.querySelector ? el.querySelector('input.ng-input input, input') : null);
+        const search = searchBoxFor(el);
         if (search) {
           await typeText(search, w, { delay: 15 });
-          await AF.sleep(300);
+          await AF.waitFor(() => readOptions(openPanel() || panel).length, { timeout: 1500, interval: 80 });
           opts = readOptions(openPanel() || panel);
-          m = bestOption(opts, w) || opts[0];
+          m = bestOption(opts, w);
+          if (!m && opts.length && opts.length <= 3) m = opts[0]; // da loc con rat it -> lay cai dau
+          if (!m && search === el && opts.length === 0) {
+            // go ca chuoi khong ra gi (autocomplete khop tung phan) -> thu voi 3 ky tu dau
+            await typeText(search, String(w).slice(0, 3), { delay: 15 });
+            await AF.waitFor(() => readOptions(openPanel() || panel).length, { timeout: 1500, interval: 80 });
+            opts = readOptions(openPanel() || panel);
+            m = bestOption(opts, w) || opts[0];
+          }
         }
       }
 
@@ -526,6 +638,54 @@
     return s;
   };
 
+  /* ------------------------------------------------------ ngay dang text */
+
+  const DATE_HINT = /ngay|date|birthday|\bdob\b|sinh nhat|thoi gian|deadline|han\b/i;
+
+  /** Chuoi ngay bat ky (ISO, dd/mm/yyyy...) -> Date, hoac null. */
+  const parseAnyDate = (v) => {
+    const s = String(v ?? '').trim();
+    let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+    if (m) {
+      const [, a, b, y] = m;
+      return +a > 12 || +b <= 12 ? new Date(+y, +b - 1, +a) : new Date(+y, +a - 1, +b);
+    }
+    const d = new Date(s);
+    return isNaN(d) ? null : d;
+  };
+
+  /** Date -> chuoi theo token "dd/mm/yyyy" | "mm-dd-yyyy" | "yyyy-mm-dd"... */
+  const formatDate = (d, fmt) => {
+    const p = (n) => String(n).padStart(2, '0');
+    return fmt
+      .replace(/yyyy/i, String(d.getFullYear()))
+      .replace(/yy(?!yy)/i, String(d.getFullYear()).slice(2))
+      .replace(/mm/i, p(d.getMonth() + 1))
+      .replace(/dd/i, p(d.getDate()));
+  };
+  AF.formatDate = formatDate;
+  AF.parseAnyDate = parseAnyDate;
+
+  /**
+   * O text nhap ngay (matDatepicker, mask...): AI va du lieu thu hay dua ISO
+   * "2026-09-10", nhung o do hien "10/09/2026". Doi sang dung dinh dang cua o
+   * (doan tu placeholder / gia tri dang co; mac dinh dd/mm/yyyy theo VN).
+   */
+  const toTextDate = (el, value, kind) => {
+    const s = String(value ?? '').trim();
+    if (!s) return s;
+    const isDateField = kind === 'datepicker' || DATE_HINT.test(`${AF.accessibleName(el)} ${el.getAttribute('placeholder') || ''} ${el.name || ''}`);
+    if (!isDateField) return s;
+    const d = parseAnyDate(s);
+    if (!d) return s;
+    const fmt = AF.dateFormatOf(el) || 'dd/mm/yyyy';
+    // gia tri da dung dinh dang thi giu nguyen
+    const already = formatDate(d, fmt);
+    return already;
+  };
+
   /* ---------------------------------------------------------- dispatcher */
 
   /**
@@ -564,20 +724,24 @@
           else if (el.tagName === 'INPUT' && ['date', 'datetime-local', 'month', 'week', 'time'].includes(el.type))
             res = { ok: await fillText(el, toDateValue(step.value, el.type)) };
           else if (kind === 'combobox' || kind === 'multiselect-custom' || el.tagName === 'MAT-SELECT')
-            res = await selectCustom(el, step.value, { multiple: kind === 'multiselect-custom' });
+            res = await selectCustom(el, step.value, { multiple: kind === 'multiselect-custom', random: !!step.random, count: step.count });
+          else if (el.tagName === 'INPUT' && (kind === 'datepicker' || kind === 'text' || !kind))
+            res = { ok: await fillText(el, toTextDate(el, step.value, kind)) };
           else res = { ok: await fillText(el, step.value) };
           break;
         }
         case 'type':
-          res = { ok: await typeText(el, step.value, { delay: step.delay ?? 25 }) };
+          res = { ok: await typeText(el, el.tagName === 'INPUT' ? toTextDate(el, step.value, step.kind) : step.value, { delay: step.delay ?? 25 }) };
           break;
         case 'select':
           if (el.tagName === 'SELECT') res = { ok: await selectNative(el, step.value) };
-          else res = await selectCustom(el, step.value, { multiple: !!step.multiple });
+          else res = await selectCustom(el, step.value, { multiple: !!step.multiple, random: !!step.random, count: step.count });
           break;
-        case 'check':
-          res = { ok: await setChecked(el, step.value === false || step.value === 'false' ? false : true) };
+        case 'check': {
+          const ok = await setChecked(el, step.value === false || step.value === 'false' ? false : true);
+          res = ok ? { ok } : { ok, error: 'Khong doi duoc trang thai checkbox' };
           break;
+        }
         case 'radio':
           res = { ok: await selectRadio(el, step.value) };
           break;

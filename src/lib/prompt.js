@@ -58,7 +58,7 @@ QUY TAC BAT BUOC
 5. Voi field kind=file, value la ten file goi y, vi du "cv-nguyen-van-a.pdf". Extension se tu tao file placeholder.
 6. Bo qua (dua vao "skipped") cac field: da co san gia tri dung, disabled, hoac la captcha / OTP / mat khau / so the tin dung / CVV.
 7. Ton trong "maxLength", "pattern", "required" va "help" cua tung field.
-8. Ngay thang: dung dinh dang YYYY-MM-DD tru khi field noi ro khac.
+8. Ngay thang: dung dinh dang YYYY-MM-DD; neu field co "dateFormat" (vi du "dd/mm/yyyy") thi ghi dung dinh dang do. Field kind=datepicker la o text co lich, cung dien chuoi ngay.
 9. Uu tien dien HET cac field "required": true.
 10. Noi dung phai thuc te, nhat quan voi nhau (vi du email khop voi ten, tinh/thanh khop voi dia chi) va phu hop ngu canh trang.
 
@@ -90,6 +90,7 @@ const compactField = (f) => {
     pattern: f.pattern || undefined,
     accept: f.accept || undefined,
     multiple: f.multiple || undefined,
+    dateFormat: f.dateFormat || undefined, // o text nhap ngay: ghi dung dinh dang nay
     current: f.currentValue || undefined,
   };
   if (f.options && f.options.length) o.options = f.options.map((x) => x.label || x.value).slice(0, 60);
@@ -166,6 +167,9 @@ export function planToSteps(plan, fields) {
       note: s.note || '',
       label: f.label,
       frameId: f.frameId,
+      // random: khong biet danh sach option (autocomplete) -> mo panel roi chon ngau nhien
+      random: !!s.random,
+      count: s.count || 0,
     });
   }
   return steps;
