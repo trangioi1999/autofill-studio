@@ -140,10 +140,31 @@
     if (Number(style.opacity) === 0) return false;
     const r = AF.rectOf(el);
     if (r.width <= 0 || r.height <= 0) {
-      // element rong nhung van co the la file input an, hoac select an trong mat-select
+      // host inline / display:contents (mat-radio-group) khong co kich thuoc
+      // rieng nhung con cua no thi co -> van la nhin thay
+      if (el.children && el.children.length && !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
+        for (const c of el.children) {
+          const cr = AF.rectOf(c);
+          if (cr.width > 0 && cr.height > 0) return true;
+        }
+      }
       return false;
     }
     return true;
+  };
+
+  /**
+   * Input radio/checkbox cua Material (MDC), PrimeNG, Ant... bi an bang
+   * opacity:0 va nam de len widget ve tay. Tra ve widget nhin thay duoc
+   * bao quanh no, hoac null neu day la input binh thuong.
+   */
+  AF.widgetHostOf = (el) => {
+    if (!el || el.tagName !== 'INPUT' || !/^(radio|checkbox)$/.test(el.type)) return null;
+    return AF.closestDeep(
+      el,
+      'mat-radio-button,mat-checkbox,mat-slide-toggle,.mdc-radio,.mdc-checkbox,.mdc-switch,.mdc-form-field,' +
+        '.p-radiobutton,.p-checkbox,.ant-radio,.ant-checkbox,.ant-radio-wrapper,.ant-checkbox-wrapper,.MuiRadio-root,.MuiCheckbox-root,.form-check,label'
+    );
   };
 
   AF.isFileInput = (el) => el && el.tagName === 'INPUT' && el.type === 'file';

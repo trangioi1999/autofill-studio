@@ -273,10 +273,32 @@
       }
     }
     if (!sibs.length) {
-      const grp = AF.closestDeep(el, '[role="radiogroup"],mat-radio-group,fieldset,.radio-group');
-      if (grp) sibs = [...grp.querySelectorAll('input[type="radio"],mat-radio-button,[role="radio"]')];
+      const grp = AF.closestDeep(el, '[role="radiogroup"],mat-radio-group,nz-radio-group,fieldset,.radio-group') || el;
+      // uu tien input that (co value); khong co moi lay widget
+      sibs = [...grp.querySelectorAll('input[type="radio"]')];
+      if (!sibs.length) sibs = [...grp.querySelectorAll('mat-radio-button,[role="radio"]')];
     }
-    return sibs.map((s) => ({ value: s.value ?? '', label: AF.accessibleName(s) || AF.norm(s.textContent) }));
+    const seen = new Set();
+    return sibs
+      .map((s) => ({ value: s.value ?? '', label: AF.accessibleName(s) || AF.norm(s.textContent) }))
+      .filter((o) => {
+        const k = AF.slug(o.label || o.value);
+        if (!k || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+  };
+
+  /** Nhan cua ca nhom radio: legend / mat-label / aria-label / label dung truoc. */
+  const radioGroupLabel = (grp) => {
+    const al = grp.getAttribute && grp.getAttribute('aria-label');
+    if (al) return AF.norm(al);
+    const inner = grp.querySelector('legend,mat-label,.mat-mdc-form-field-label,.group-label,:scope > label:not([for])');
+    if (inner) return AF.norm(inner.textContent).replace(/\s*\*\s*$/, '');
+    let prev = grp.previousElementSibling;
+    if (prev && /^(LABEL|MAT-LABEL|LEGEND|SPAN|DIV)$/.test(prev.tagName) && AF.norm(prev.textContent).length < 80)
+      return AF.norm(prev.textContent).replace(/\s*\*\s*$/, '');
+    return '';
   };
 
   /**
@@ -328,15 +350,22 @@
     const type = (el.type || '').toLowerCase();
     if (tag === 'input' && SKIP_TYPES.has(type)) return null;
 
-    // Bo qua input an ben trong widget custom (mat-select co 1 select an)
-    const visible = AF.isVisible(el);
+    // Bo qua input an ben trong widget custom (mat-select co 1 select an).
+    // Rieng radio/checkbox an bang opacity:0 trong widget ve tay (MDC, PrimeNG,
+    // Ant) thi van la field that — dung host nhin thay duoc de xet.
+    let visible = AF.isVisible(el);
+    const host = !visible ? AF.widgetHostOf(el) : null;
+    if (!visible && host && AF.isVisible(host)) visible = true;
     if (!visible && kind !== 'file' && !el.hasAttribute('aria-hidden')) {
       // van giu file input an, con lai bo
       if (kind !== 'file') return null;
     }
 
-    const label = AF.accessibleName(el) || AF.labelTextOf(el);
-    const r = AF.rectOf(el);
+    let label = AF.accessibleName(el) || AF.labelTextOf(el);
+    if (kind === 'radiogroup' && el.tagName !== 'INPUT') label = radioGroupLabel(el) || label;
+    // mat-checkbox / mat-slide-toggle: nhan nam trong host (label[for] cua input an)
+    if (!label && (kind === 'checkbox-custom' || kind === 'toggle')) label = AF.norm(el.textContent).slice(0, 140);
+    const r = AF.rectOf(host && AF.isVisible(host) ? host : el);
 
     let options = [];
     if (kind === 'select' || kind === 'multiselect') options = nativeOptions(el);
@@ -344,7 +373,10 @@
     else if (kind === 'combobox' || kind === 'multiselect-custom') options = customOptions(el);
 
     let currentValue = '';
-    if (kind === 'checkbox' || kind === 'radio') currentValue = el.checked ? 'true' : 'false';
+    if (kind === 'radiogroup' && el.tagName !== 'INPUT') {
+      const on = el.querySelector('input[type="radio"]:checked,[role="radio"][aria-checked="true"],mat-radio-button.mat-mdc-radio-checked');
+      currentValue = on ? (AF.accessibleName(on) || AF.norm(on.textContent) || on.value || '').slice(0, 200) : '';
+    } else if (kind === 'checkbox' || kind === 'radio') currentValue = el.checked ? 'true' : 'false';
     else if (kind === 'checkbox-custom' || kind === 'toggle')
       currentValue = el.getAttribute('aria-checked') || (el.classList.contains('mat-mdc-checkbox-checked') ? 'true' : 'false');
     else if (kind === 'editor') currentValue = AF.norm(el.textContent).slice(0, 2000);
@@ -459,6 +491,13 @@
         // bo o tim kiem nam trong panel dropdown dang mo — no khong phai field cua form
         if (AF.closestDeep(AF.composedParent(el), '.cdk-overlay-container,.mat-mdc-select-panel,.mat-select-panel,.ant-select-dropdown,.p-dropdown-panel,.p-multiselect-panel,.ng-dropdown-panel,[role="listbox"]')) continue;
         if (/mat-select-search-input|select-search|dropdown-filter|p-dropdown-filter|p-multiselect-filter/i.test(el.className || '')) continue;
+        // radio nam trong mat-radio-group / [role=radiogroup]: host da la 1 field "radiogroup"
+        if (el.tagName === 'INPUT' && el.type === 'radio' && AF.closestDeep(AF.composedParent(el), 'mat-radio-group,nz-radio-group,[role="radiogroup"]')) continue;
+        // checkbox an trong mat-checkbox / mat-slide-toggle...: host (nhin thay) da la 1 field
+        if (el.tagName === 'INPUT' && el.type === 'checkbox') {
+          const h = AF.closestDeep(AF.composedParent(el), 'mat-checkbox,mat-slide-toggle,p-checkbox,p-inputswitch,nz-checkbox,nz-switch');
+          if (h && AF.isVisible(h)) continue;
+        }
         try {
           const f = describeField(el);
           if (f) out.push(f);

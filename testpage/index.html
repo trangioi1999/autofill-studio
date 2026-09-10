@@ -4,6 +4,19 @@
     <meta charset="utf-8" />
     <title>Test form — Angular Material / Shadow DOM / iframe</title>
     <style>
+      /* Mo phong CSS cua Material MDC: input that bi an, ve tay bang div */
+      mat-checkbox, mat-radio-button { display: inline-block; }
+      .mdc-form-field { display: inline-flex; align-items: center; gap: 6px; }
+      .mdc-radio, .mdc-checkbox { position: relative; display: inline-block; width: 20px; height: 20px; }
+      .mdc-radio__native-control, .mdc-checkbox__native-control {
+        position: absolute; margin: 0; padding: 0; opacity: 0; cursor: inherit; z-index: 1;
+        width: 100%; height: 100%; top: 0; left: 0;
+      }
+      .mdc-radio__background { position: absolute; inset: 0; border: 2px solid #666; border-radius: 50%; }
+      .mdc-radio__native-control:checked + .mdc-radio__background { border-color: #6750a4; }
+      .mdc-radio__native-control:checked + .mdc-radio__background .mdc-radio__inner-circle { position: absolute; inset: 4px; background: #6750a4; border-radius: 50%; }
+      .mdc-checkbox__background { position: absolute; inset: 0; border: 2px solid #666; border-radius: 3px; }
+      .mdc-checkbox__native-control:checked + .mdc-checkbox__background { background: #6750a4; }
       .mat-mdc-chip-grid { display: flex; flex-wrap: wrap; gap: 4px; min-height: 8px; }
       .mat-mdc-chip { background: #e8e6ff; border-radius: 999px; padding: 2px 10px; font-size: 12px; }
       .contains-mat-select-search input { width: 100%; box-sizing: border-box; padding: 6px 8px; }
@@ -130,6 +143,10 @@
       <input id="start" class="mat-mdc-input-element mat-datepicker-input" placeholder="dd/mm/yyyy" aria-haspopup="dialog" autocomplete="off" />
       <span class="hint" id="start-parsed"></span>
     </mat-form-field>
+
+    <div class="col-lg-6 col-md-12 pb-3 align-items-center ng-star-inserted"><mat-radio-group role="radiogroup" class="mat-mdc-radio-group" id="gender"><mat-label class="mx-1">Gioi tinh <span class="text-danger ng-star-inserted">*</span><!----></mat-label><mat-radio-button color="primary" class="mat-mdc-radio-button mx-1 mat-primary" id="mat-radio-0"><div mat-internal-form-field="" class="mdc-form-field mat-internal-form-field"><div class="mdc-radio"><div aria-hidden="true" class="mat-mdc-radio-touch-target"></div><input type="radio" aria-invalid="false" class="mdc-radio__native-control" id="mat-radio-0-input" required="" name="ng.form0.gender" value="MALE" tabindex="0"><div aria-hidden="true" class="mdc-radio__background"><div class="mdc-radio__outer-circle"></div><div class="mdc-radio__inner-circle"></div></div><div mat-ripple="" aria-hidden="true" class="mat-ripple mat-radio-ripple mat-focus-indicator"><div class="mat-ripple-element mat-radio-persistent-ripple"></div></div></div><label class="mdc-label" for="mat-radio-0-input">Nam</label></div></mat-radio-button><mat-radio-button color="primary" class="mat-mdc-radio-button mx-1 mat-primary" id="mat-radio-1"><div mat-internal-form-field="" class="mdc-form-field mat-internal-form-field"><div class="mdc-radio"><div aria-hidden="true" class="mat-mdc-radio-touch-target"></div><input type="radio" aria-invalid="false" class="mdc-radio__native-control" id="mat-radio-1-input" required="" name="ng.form0.gender" value="FEMALE" tabindex="0"><div aria-hidden="true" class="mdc-radio__background"><div class="mdc-radio__outer-circle"></div><div class="mdc-radio__inner-circle"></div></div><div mat-ripple="" aria-hidden="true" class="mat-ripple mat-radio-ripple mat-focus-indicator"><div class="mat-ripple-element mat-radio-persistent-ripple"></div></div></div><label class="mdc-label" for="mat-radio-1-input">Nu</label></div></mat-radio-button></mat-radio-group><!----></div>
+
+    <div class="pb-3"><mat-checkbox class="mat-mdc-checkbox" id="newsletter"><div class="mdc-form-field"><div class="mdc-checkbox"><input type="checkbox" class="mdc-checkbox__native-control" id="newsletter-input" /><div class="mdc-checkbox__background"></div></div><label class="mdc-label" for="newsletter-input">Nhan ban tin (mat-checkbox MDC)</label></div></mat-checkbox></div>
 
     <h2>Tep dinh kem</h2>
     <label for="cv">CV (PDF)</label>

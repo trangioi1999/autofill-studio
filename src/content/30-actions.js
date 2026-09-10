@@ -235,6 +235,9 @@
 
   const isChecked = (el) => {
     if (typeof el.checked === 'boolean' && el.tagName === 'INPUT') return el.checked;
+    // widget bao ngoai (mat-checkbox, p-checkbox...): input that ben trong la nguon su that
+    const inner = el.querySelector && el.querySelector('input[type="checkbox"],input[type="radio"]');
+    if (inner) return !!inner.checked;
     const a = el.getAttribute('aria-checked');
     if (a != null) return a === 'true';
     return /(^|\s)(mat-mdc-checkbox-checked|mat-checked|ant-checkbox-checked|is-checked|checked)(\s|$)/.test(
@@ -288,21 +291,44 @@
       }
     }
     if (!group.length) {
-      const g = AF.closestDeep(el, '[role="radiogroup"],mat-radio-group,fieldset') || el;
-      group = [...g.querySelectorAll('input[type="radio"],mat-radio-button,[role="radio"]')];
+      const g = AF.closestDeep(el, '[role="radiogroup"],mat-radio-group,nz-radio-group,fieldset') || el;
+      // input that truoc (Material MDC: input an opacity:0 nam trong mat-radio-button)
+      group = [...g.querySelectorAll('input[type="radio"]')];
+      if (!group.length) group = [...g.querySelectorAll('mat-radio-button,[role="radio"]')];
     }
     const items = group.map((g) => ({ el: g, label: AF.accessibleName(g) || AF.norm(g.textContent), value: g.value ?? '' }));
     const m = bestOption(items, want);
     if (!m) return false;
     const t = m.el;
+    const host = AF.widgetHostOf(t) || t;
+    await AF.scrollIntoView(host);
+    if (AF.Picker) AF.Picker.cursor(host);
+
     if (t.tagName === 'INPUT') {
-      t.checked = true;
-      fire(t, 'click');
-      fire(t, 'input');
-      fire(t, 'change');
-    } else {
-      await clickEl(t.querySelector('input,label,.mdc-radio') || t);
+      if (t.checked) return true;
+      // .click() native: trinh duyet tu set checked va phat input/change dung
+      // chuan -> MatRadioButton/Angular forms nhan duoc. Khong dispatch click
+      // thu cong sau khi set .checked (se toggle nguoc / khong phat change).
+      try {
+        t.click();
+      } catch {
+        /* noop */
+      }
+      await AF.sleep(60);
+      if (!t.checked) {
+        // widget chan click tren input -> click nhan / vong tron ve tay
+        const lbl = (t.id && t.getRootNode().querySelector(`label[for="${CSS.escape(t.id)}"]`)) || host.querySelector('.mdc-radio,label') || host;
+        await clickEl(lbl);
+        await AF.sleep(60);
+      }
+      if (!t.checked) {
+        t.checked = true;
+        fire(t, 'input');
+        fire(t, 'change');
+      }
+      return t.checked;
     }
+    await clickEl(t.querySelector('input,label,.mdc-radio') || t);
     return true;
   }
 
@@ -711,9 +737,11 @@
           if (el.tagName === 'SELECT') res = { ok: await selectNative(el, step.value) };
           else res = await selectCustom(el, step.value, { multiple: !!step.multiple, random: !!step.random, count: step.count });
           break;
-        case 'check':
-          res = { ok: await setChecked(el, step.value === false || step.value === 'false' ? false : true) };
+        case 'check': {
+          const ok = await setChecked(el, step.value === false || step.value === 'false' ? false : true);
+          res = ok ? { ok } : { ok, error: 'Khong doi duoc trang thai checkbox' };
           break;
+        }
         case 'radio':
           res = { ok: await selectRadio(el, step.value) };
           break;
