@@ -52,12 +52,13 @@
     },
 
     AF_CLEAR: () => {
+      AF.Picker.cancelPick();
+      AF.Picker.cursorOff();
       AF.Picker.clear();
-      AF.Picker.stopPick();
       return { ok: true };
     },
 
-    AF_SCROLL_TO: (msg) => ({ ok: AF.Picker.scrollTo(msg.id) }),
+    AF_SCROLL_TO: async (msg) => ({ ok: await AF.Picker.scrollTo(msg.id) }),
 
     AF_PICK: () =>
       new Promise((resolve) => {
@@ -82,13 +83,14 @@
     },
 
     /** Danh dau element bang attribute tam de CDP tim lai duoc bang selector. */
-    AF_CDP_MARK: (msg) => {
+    AF_CDP_MARK: async (msg) => {
       const el = AF.registry.get(msg.afId);
       if (!el || !AF.isConnected(el)) return { ok: false, error: 'Element khong con ton tai' };
       // don dau cu
       AF.deepQueryAll(`[${msg.attr}]`).forEach((n) => n.removeAttribute(msg.attr));
       el.setAttribute(msg.attr, msg.mark);
-      AF.scrollIntoView(el);
+      await AF.scrollIntoView(el, { instant: true });
+      AF.Picker.cursor(el);
       const r = AF.rectOf(el);
       return {
         ok: true,

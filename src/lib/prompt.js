@@ -160,7 +160,7 @@ export function planToSteps(plan, fields) {
       afId: f.id,
       action,
       value,
-      source: s.source || 'invented',
+      source: s.source || 'invented', // 'random' khi do fillGaps / dummyPlan sinh ra
       kind: f.kind,
       multiple: f.kind === 'multiselect' || f.kind === 'multiselect-custom',
       note: s.note || '',

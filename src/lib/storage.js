@@ -43,6 +43,9 @@ export const DEFAULTS = {
   typeDelay: 20,
   stopOnError: false,
   maxFields: 120,
+  // O co danh sach lua chon (dropdown / multi / radio) ma AI bo trong hoac dua
+  // gia tri khong khop -> tu chon ngau nhien, de form khong bi thieu
+  randomGaps: true,
 
   // Agent
   agentMaxSteps: 12,

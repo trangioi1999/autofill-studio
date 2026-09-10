@@ -11,6 +11,7 @@ import {
   renderSnapshot, renderState, buildAgentPrompt, compactHistory, actionToStep,
 } from '../lib/agent.js';
 import { screenKey } from '../lib/screen.js';
+import { dummyPlan, fillGaps } from '../lib/dummy.js';
 import { normalizeUsage, addUsage } from '../lib/usage.js';
 
 /* ------------------------------------------------------------------ setup */
@@ -142,10 +143,13 @@ async function generatePlan({ tabId, request, fields, context }) {
   });
 
   const plan = res.json || {};
+  // Dropdown / multi / radio ma AI bo trong hoac dua gia tri la -> chon ngau nhien
+  const randomFilled = settings.randomGaps ? fillGaps(plan, trimmed) : 0;
   const steps = planToSteps(plan, trimmed);
   return {
     steps,
     skipped: plan.skipped || [],
+    randomFilled,
     raw: res.raw,
     usage: normalizeUsage(res.usage),
     ms: Date.now() - t0,
@@ -481,7 +485,10 @@ async function autofill({ tabId, request, onEvent }) {
 
   emit({ phase: 'generate', message: `Dang hoi ${settings.provider}...` });
   const plan = await generatePlan({ tabId, request, fields, context });
-  emit({ phase: 'planned', steps: plan.steps, skipped: plan.skipped, ms: plan.ms, usage: plan.usage, provider: plan.provider, via: plan.via });
+  emit({
+    phase: 'planned', steps: plan.steps, skipped: plan.skipped, ms: plan.ms, usage: plan.usage,
+    provider: plan.provider, via: plan.via, randomFilled: plan.randomFilled,
+  });
 
   emit({ phase: 'run', message: `Dang dien ${plan.steps.length} field...` });
   const results = await runPlan({ tabId, steps: plan.steps });
@@ -502,6 +509,31 @@ async function autofill({ tabId, request, onEvent }) {
   }
 
   return { fields, plan, results };
+}
+
+/* ------------------------------------------------------------- dummy fill */
+
+/** Che do "Ngau nhien": quet -> sinh du lieu thu -> dien. Khong goi AI, khong can key. */
+async function dummyFill({ tabId }) {
+  const emit = (e) => chrome.runtime.sendMessage({ type: 'AF_EVENT', ...e }).catch(() => {});
+  const settings = await getSettings();
+
+  emit({ phase: 'scan', message: 'Dang quet field...' });
+  const { fields, frames } = await scanTab(tabId, { deep: settings.deepScan });
+  emit({ phase: 'scanned', count: fields.length, frames, fields });
+  if (!fields.length) throw new Error('Khong tim thay field nao tren trang.');
+
+  const t0 = Date.now();
+  const plan = dummyPlan(fields);
+  const steps = planToSteps(plan, fields);
+  emit({ phase: 'planned', steps, skipped: plan.skipped, ms: Date.now() - t0, source: 'random' });
+
+  emit({ phase: 'run', message: `Dang dien ${steps.length} field bang du lieu thu...` });
+  const results = await runPlan({ tabId, steps });
+  const okCount = results.filter((r) => r.ok).length;
+  emit({ phase: 'done', results, ok: okCount, total: results.length, source: 'random' });
+  // Khong ghi vao bo nho man hinh: du lieu thu khong phai du lieu that cua ban
+  return { fields, steps, results, ok: okCount, total: results.length };
 }
 
 /* ------------------------------------------------------------ msg router */
@@ -547,6 +579,7 @@ const routes = {
   AF_GENERATE: (m) => generatePlan(m),
   AF_RUN_PLAN: (m) => runPlan(m),
   AF_AUTOFILL: (m) => autofill(m),
+  AF_DUMMY_FILL: (m) => dummyFill(m),
 
   AF_HIGHLIGHT_TAB: async (m) => {
     const frames = await listFrames(m.tabId);

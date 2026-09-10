@@ -415,6 +415,7 @@ const SRC_LABEL = {
   goal: 'muc tieu',
   page: 'tu trang',
   invented: 'AI bia',
+  random: 'ngau nhien',
 };
 
 const btn = (label, onClick, cls = 'btn tiny') => {
@@ -443,6 +444,8 @@ function renderPlan() {
         '',
         state.planSource === 'memory'
           ? `${state.steps.length} buoc lay tu bo nho man hinh (khong goi AI).`
+          : state.planSource === 'random'
+          ? `${state.steps.length} buoc du lieu thu (khong goi AI): dropdown chon ngau nhien, so ngau nhien, text theo nhan.`
           : `${state.steps.length} buoc do AI de xuat. Sua truc tiep truoc khi ap dung neu can.`
       )
     );
@@ -696,7 +699,7 @@ chrome.runtime.onMessage.addListener((m) => {
     state.steps = m.steps || [];
     state.skipped = m.skipped || [];
     state.results = [];
-    state.planSource = m.source === 'memory' ? 'memory' : 'ai';
+    state.planSource = m.source === 'memory' ? 'memory' : m.source === 'random' ? 'random' : 'ai';
     renderPlan();
     finishEv();
 
@@ -707,11 +710,14 @@ chrome.runtime.onMessage.addListener((m) => {
         '',
         state.planSource === 'memory'
           ? `Ghep tu ban luu "${m.snapshot?.name || ''}"`
+          : state.planSource === 'random'
+          ? `Sinh du lieu thu cho ${state.steps.length} o (khong goi AI)`
           : `AI de xuat gia tri cho ${state.steps.length} o`
       )
     );
     if (state.skipped.length) card.append(el('div', 'meta', `Bo qua ${state.skipped.length} o`));
-    if (state.planSource !== 'memory' && m.provider) card.append(el('div', 'meta', viaLabel(m)));
+    if (m.randomFilled) card.append(el('div', 'meta', `${m.randomFilled} o co danh sach lua chon AI bo trong / dua sai -> da chon ngau nhien`));
+    if (state.planSource === 'ai' && m.provider) card.append(el('div', 'meta', viaLabel(m)));
     const row = el('div', 'row');
     row.append(btn('Xem ke hoach', () => switchView('plan')));
     card.append(row);
@@ -722,6 +728,8 @@ chrome.runtime.onMessage.addListener((m) => {
     ev(
       state.planSource === 'memory'
         ? `Lay ${state.steps.length} gia tri tu bo nho`
+        : state.planSource === 'random'
+        ? `Sinh ${state.steps.length} gia tri thu`
         : `AI tra ve ${state.steps.length} buoc`,
       { kind: 'ok', ms: m.ms || null, card }
     );
@@ -831,7 +839,10 @@ document.querySelectorAll('.modes button').forEach((b) => {
     $('#prompt').placeholder =
       state.mode === 'agent'
         ? 'Muc tieu cho agent. VD: tim viec Angular o TP.HCM roi dien don ung tuyen dau tien'
+        : state.mode === 'random'
+        ? 'Khong can nhap gi — bam gui de dien du lieu thu ngay (khong goi AI)'
         : 'Vi du: dien don ung tuyen Senior Angular Dev, 6 nam kinh nghiem, o TP.HCM';
+    $('#prompt').disabled = state.mode === 'random';
   };
 });
 
@@ -848,6 +859,24 @@ async function ensureReady() {
 $('#btn-run').onclick = async () => {
   const request = $('#prompt').value.trim();
   switchView('run');
+
+  if (state.mode === 'random') {
+    // Khong can AI, khong can key
+    setBusy(true);
+    ev('Dien du lieu thu: dropdown / multi chon ngau nhien, so ngau nhien, text theo nhan', { kind: 'idle' });
+    try {
+      const r = await send({ type: 'AF_DUMMY_FILL' });
+      if (r?.error) throw new Error(r.error);
+    } catch (e) {
+      finishEv('err', '✕');
+      ev('Loi: ' + e.message, { kind: 'err' });
+      toast(e.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+    return;
+  }
+
   if (!(await ensureReady())) return;
 
   if (state.mode === 'agent') {
@@ -889,6 +918,7 @@ $('#btn-stop').onclick = async () => {
 $('#btn-map').onclick = async () => {
   switchView('run');
   setBusy(true);
+  $('#btn-map').classList.add('busy');
   ev('Dang chup ban do trang (dung cai ma model nhin thay)...');
   try {
     const r = await send({ type: 'AF_SNAPSHOT_TAB' });
@@ -900,6 +930,7 @@ $('#btn-map').onclick = async () => {
     finishEv('err', '✕');
     ev('Loi: ' + e.message, { kind: 'err' });
   } finally {
+    $('#btn-map').classList.remove('busy');
     setBusy(false);
   }
 };
@@ -907,6 +938,7 @@ $('#btn-map').onclick = async () => {
 $('#btn-scan').onclick = async () => {
   switchView('fields');
   setBusy(true);
+  $('#btn-scan').classList.add('busy');
   setScanning(true);
   ev('Dang quet trang...');
   try {
@@ -923,32 +955,66 @@ $('#btn-scan').onclick = async () => {
     toast(e.message, 'err');
   } finally {
     setScanning(false);
+    $('#btn-scan').classList.remove('busy');
     setBusy(false);
   }
 };
 
-$('#btn-highlight').onclick = async () => {
+/* Chip bat/tat: bam 1 lan la bat (chip to mau), bam lai la tat. */
+const chips = { highlight: false, pick: false };
+
+function renderChips() {
+  $('#btn-highlight').classList.toggle('on', chips.highlight);
+  $('#btn-pick').classList.toggle('on', chips.pick);
+  $('#btn-pick').textContent = chips.pick ? 'Dang chon… (Esc)' : 'Chon element';
+  $('#btn-clear').classList.toggle('hide', !chips.highlight && !chips.pick && $('#picked').classList.contains('hide'));
+}
+
+async function setHighlight(on) {
+  chips.highlight = on;
+  renderChips();
+  if (!on) {
+    await send({ type: 'AF_CLEAR_TAB' });
+    return;
+  }
   if (!state.fields.length) {
     const r = await send({ type: 'AF_SCAN_TAB', deep: false });
     state.fields = r.fields || [];
     renderFields();
   }
   await send({ type: 'AF_HIGHLIGHT_TAB', fields: state.fields });
-  toast('Da danh dau field tren trang', 'info');
-};
+}
 
-$('#btn-clear').onclick = () => {
-  send({ type: 'AF_CLEAR_TAB' });
+$('#btn-highlight').onclick = () => setHighlight(!chips.highlight);
+
+$('#btn-clear').onclick = async () => {
+  chips.highlight = false;
+  chips.pick = false;
   $('#picked').classList.add('hide');
+  renderChips();
+  await send({ type: 'AF_CLEAR_TAB' });
 };
 
 $('#btn-pick').onclick = async () => {
-  toast('Di chuot len trang roi click element muon chon', 'info');
+  if (chips.pick) {
+    // bam lai = huy: content script tra null cho request AF_PICK dang cho
+    chips.pick = false;
+    renderChips();
+    await send({ type: 'AF_CLEAR_TAB' });
+    return;
+  }
+  chips.pick = true;
+  // danh dau va chon element dung chung mot lop overlay -> tat danh dau truoc
+  chips.highlight = false;
+  renderChips();
+  toast('Di chuot len trang roi click element muon chon. Esc de huy.', 'info');
   const r = await send({ type: 'AF_PICK_TAB' });
+  chips.pick = false;
   const p = r?.picked;
   const box = $('#picked');
   if (!p) {
     box.classList.add('hide');
+    renderChips();
     return;
   }
   box.classList.remove('hide');
@@ -959,6 +1025,7 @@ $('#btn-pick').onclick = async () => {
     el('div', 'sel', p.selector)
   );
   ev(`Da chon element: ${p.tag} — ${p.label || ''}`, { kind: 'ok', detail: p.selector });
+  renderChips();
 };
 
 $('#btn-mode').onclick = async () => {
@@ -1059,6 +1126,9 @@ $('#q').oninput = (e) => {
 /* Panel song lau hon tab: doi tab thi phai doc lai ngu canh */
 chrome.tabs.onActivated.addListener(async () => {
   await pickTab();
+  chips.highlight = false;
+  chips.pick = false;
+  renderChips();
   state.fields = [];
   state.steps = [];
   state.results = [];

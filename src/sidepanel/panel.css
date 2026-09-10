@@ -387,6 +387,19 @@ button:disabled { opacity: .45; cursor: default; }
 }
 .chip.act:hover { border-color: var(--accent); color: var(--fg); }
 .chip.warn { border-color: var(--warn); color: var(--warn); }
+/* Chip bat/tat: dang bat thi to mau va co cham truoc ten */
+.chip.act.tog.on {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
+.chip.act.tog.on::before {
+  content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); margin-right: 5px; vertical-align: 1px;
+  animation: chipdot 1.4s ease-in-out infinite;
+}
+@keyframes chipdot { 50% { opacity: .35; } }
+/* Chip dang chay mot viec (quet, chup ban do) */
+.chip.act.busy { color: var(--fg-mute); border-style: dashed; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .chip.act.tog.on::before { animation: none; } }
 
 .input-wrap {
   display: flex; align-items: flex-end; gap: 7px;
@@ -582,6 +595,7 @@ button:disabled { opacity: .45; cursor: default; }
 .src.goal     { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
 .src.page     { background: var(--surface-2);   color: var(--fg-dim); border-color: var(--line); }
 .src.invented { background: var(--err-soft);    color: var(--err);    border-color: color-mix(in srgb, var(--err) 30%, transparent); }
+.src.random   { background: var(--surface-2);   color: var(--warn);   border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 
 /* --------------------------------------------------------------- ho so tab */
 
