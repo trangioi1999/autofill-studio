@@ -218,6 +218,16 @@ Mỗi giá trị mang nhãn nguồn `ngẫu nhiên` trong tab Kế hoạch. Ch�
 
 **Với chế độ Điền form (AI)**: dropdown / multi-select / radio mà AI bỏ trống, hoặc AI đưa giá trị không có trong danh sách, sẽ được chọn ngẫu nhiên thay vì để trống — bật/tắt trong *Cài đặt → Hành vi*. Dòng "N ô … đã chọn ngẫu nhiên" hiện trong luồng hoạt động.
 
+## Ba thói quen giúp không phá dữ liệu có sẵn
+
+**Bỏ qua ô đã có giá trị.** Mặc định extension chỉ điền ô còn trống: ô đã được người dùng hoặc hệ thống điền sẵn (mã giao dịch, tên khách hàng…) không bị ghi đè, cũng không gửi cho AI nên đỡ token. Checkbox chưa tick và dropdown còn đứng ở `Chọn...` vẫn được coi là trống. Dòng "Bỏ qua N ô đã có giá trị sẵn" hiện trong luồng hoạt động. Tắt trong *Cài đặt → Hành vi* nếu muốn điền đè.
+
+**Điền mọi tab.** Trang có thanh tab (`mat-tab-group`, `nav-tabs`, `ant-tabs`, PrimeNG, MUI) thì bật chip **Mọi tab** ở thanh dưới: extension bấm lần lượt từng tab, chờ nội dung render, quét và điền riêng từng tab. Tab không có ô nhập liệu được ghi "không có ô nhập liệu, bỏ qua" rồi đi tiếp. Chỉ nhóm tab ngoài cùng được đi qua, nên tab con bên trong không làm lạc đường.
+
+**Vùng kéo thả không có input.** Ngoài `<input type="file">`, extension nhận cả dropzone thuần (`ngx-file-drop`, react-dropzone, div có chữ "Kéo tệp… vào đây"): bắn `dragenter/dragover/drop` với `File` thật. Tên file lấy theo tiêu đề khối chứa nó, ví dụ khối "Hồ sơ khiếu nại" cho ra `ho-so-khieu-nai-36.pdf`, chứ không lấy dòng hướng dẫn trong vùng. Dropzone nằm trong tab hoặc dialog đang đóng thì không bị thả nhầm.
+
+**Ma trận loại hồ sơ.** Sau khi thả file, nhiều form hiện một nhóm radio "Loại hồ sơ" ngay cạnh tên file. Lượt điền bổ sung sẽ chọn radio đó: **so khớp tên file với nhãn option** trước (`BBTNGP_Khieu_nai_KQPDTD 1.docx` → "Chứng từ khiếu nại", `scan-giay-to-tuy-than.pdf` → "Giấy tờ tùy thân"), không khớp từ nào thì chọn ngẫu nhiên. Ở chế độ AI thì model tự chọn theo ngữ cảnh như mọi radio khác.
+
 ## Chuyển động khi điền
 
 Engine chỉ cuộn khi ô nằm ngoài khung nhìn (trước đây mỗi bước đều nhảy tức thì về giữa màn hình, nên trang giật liên tục), cuộn mượt và chờ ổn định rồi mới thao tác. Một **con trỏ** duy nhất trượt từ ô này sang ô kia để bạn thấy engine đang ở đâu, khung xanh/đỏ hiện nhẹ sau mỗi ô và tự biến mất khi trang cuộn, nhịp đều ~140ms giữa các bước. Bật `prefers-reduced-motion` thì tất cả về tức thì.
@@ -414,7 +424,8 @@ src/
                99-main.js         message bridge
   providers/   gemini · anthropic · openai · chromeai · bridge
   lib/         agent.js    vòng lặp agent: tool, prompt, ref map
-               dummy.js    dữ liệu thử: random dropdown/multi/số, text theo nhãn
+               dummy.js    dữ liệu thử: random dropdown/multi/số, text theo nhãn,
+                           khớp radio loại hồ sơ với tên file, bỏ ô đã có giá trị
                usage.js    quy token của 5 provider về một dạng
                prompt.js   system prompt + schema
                storage.js  cài đặt
@@ -444,6 +455,8 @@ testpage/           form thử: Material select, multi-select, shadow DOM, ifram
 **Nguồn dữ liệu** — `source` từ model được giữ nguyên; model quên khai thì mặc định `invented`; schema bắt buộc có `source` và chỉ nhận 4 giá trị hợp lệ.
 
 **Ngẫu nhiên + chuyển động** — extension nạp thật vào Chromium, chế độ Ngẫu nhiên trên `testpage/index.html`: **17/17 ô** trong ~8s, gồm mat-select đơn (1 option), multi (3 option), select native, radio, checkbox, upload, date, và 4 ô trong iframe; con trỏ trượt xuất hiện và di chuyển theo từng ô rồi tự ẩn khi xong; chip Đánh dấu bật → 13 khung trên trang, tắt → 0; chip Chọn element bật → "Đang chọn… (Esc)", bấm lại → huỷ và trả về ngay. `dummy.js`: 14 loại ô sinh đúng loại giá trị, ô mật khẩu/OTP bị bỏ qua, `fillGaps` bù 3 ô AI bỏ trống/đưa sai, option placeholder không bao giờ được chọn (0/50 lần).
+
+**Nhiều tab + bỏ qua ô có sẵn + dropzone** — trang thử có 4 tab (Nội dung đề xuất · Thông tin giao dịch · Hồ sơ đính kèm · Lịch sử), một ô mã giao dịch điền sẵn, và một dropzone không có input. Bật chip Mọi tab ở chế độ Ngẫu nhiên: đi hết 4 tab, mã giao dịch giữ nguyên `AP26002657`, mỗi tab sau báo "Bỏ qua 24 ô đã có giá trị sẵn" (ô của tab trước), dropzone chỉ nhận file khi tab của nó đang mở (tab ẩn không bị thả nhầm), tên file ra `ho-so-khieu-nai-36.pdf` theo tiêu đề khối, và lượt 2 tự chọn radio "Chứng từ khiếu nại" khớp tên file.
 
 **Bảng có ô phụ thuộc** — mat-table trong `testpage` với autocomplete "Loại chứng từ" và 4 ô `disabled` mở khoá sau khi chọn: quét ra đúng nhãn từ header (`So dinh danh`, `Ngay cap`, `Ngay het han`, `Noi cap`) kèm `max` và `dateFormat`; Ngẫu nhiên lượt 1 điền 24/24 ô, lượt 2 tự phát hiện 4 ô vừa mở và điền 4/4: số định danh 12 chữ số, ngày cấp `12/10/2024` (≤ max), hết hạn `07/08/2027`, nơi cấp "Cục Cảnh sát QLHC về TTXH".
 

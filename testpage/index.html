@@ -18,6 +18,13 @@
       .mdc-checkbox__background { position: absolute; inset: 0; border: 2px solid #666; border-radius: 3px; }
       .mdc-checkbox__native-control:checked + .mdc-checkbox__background { background: #6750a4; }
       .mat-mdc-chip-grid { display: flex; flex-wrap: wrap; gap: 4px; min-height: 8px; }
+      .mat-mdc-tab-labels { display: flex; gap: 4px; border-bottom: 1px solid #ddd; margin-bottom: 8px; }
+      .mat-mdc-tab { background: none; border: 0; padding: 8px 12px; cursor: pointer; font: inherit; color: #666; }
+      .mat-mdc-tab[aria-selected="true"] { color: #1a7f4b; border-bottom: 2px solid #1a7f4b; font-weight: 600; }
+      .pane.hide { display: none; }
+      .upload-area { border: 2px dashed #bbb; border-radius: 8px; padding: 24px; text-align: center; color: #1a7f4b; font-weight: 600; }
+      .upload-area.over { background: #eef7f1; }
+      .file-row { display: flex; gap: 12px; align-items: center; padding: 8px 0; }
       #doc-table { width: 100%; border-collapse: collapse; }
       #doc-table th { text-align: left; font-size: 12px; color: #666; padding: 4px; }
       #doc-table td { padding: 4px; }
@@ -178,6 +185,32 @@
         </tr>
       </tbody>
     </table>
+
+    <h2>Tab (mat-tab-group) + dropzone + o da co gia tri</h2>
+    <div class="mat-mdc-tab-group" id="tabs">
+      <div role="tablist" class="mat-mdc-tab-labels">
+        <button role="tab" class="mat-mdc-tab" aria-selected="true" data-pane="pane-1">Noi dung de xuat</button>
+        <button role="tab" class="mat-mdc-tab" aria-selected="false" data-pane="pane-2">Thong tin giao dich</button>
+        <button role="tab" class="mat-mdc-tab" aria-selected="false" data-pane="pane-3">Ho so dinh kem</button>
+        <button role="tab" class="mat-mdc-tab" aria-selected="false" data-pane="pane-4">Lich su</button>
+      </div>
+      <div class="pane" id="pane-1">
+        <mat-form-field class="mat-mdc-form-field"><mat-label>Ly do khieu nai</mat-label><textarea id="reason" rows="2"></textarea></mat-form-field>
+        <mat-form-field class="mat-mdc-form-field"><mat-label>Ma giao dich (da co san)</mat-label><input id="txn" value="AP26002657" /></mat-form-field>
+      </div>
+      <div class="pane hide" id="pane-2">
+        <mat-form-field class="mat-mdc-form-field"><mat-label>So tien</mat-label><input id="amount" type="number" min="1000000" max="900000000" /></mat-form-field>
+        <mat-form-field class="mat-mdc-form-field"><mat-label>Ky han (thang)</mat-label><input id="term" type="number" min="1" max="60" /></mat-form-field>
+      </div>
+      <div class="pane hide" id="pane-3">
+        <div class="section">
+          <h3>Ho so khieu nai</h3>
+          <div class="upload-area" id="dz2">☁ Keo tep cua Anh/Chi vao day</div>
+          <div id="dz2-files"></div>
+        </div>
+      </div>
+      <div class="pane hide" id="pane-4"><p>Khong co form o day.</p></div>
+    </div>
 
     <h2>Tep dinh kem</h2>
     <label for="cv">CV (PDF)</label>
@@ -347,6 +380,37 @@
           });
         }
         inp.addEventListener('click', (e) => e.stopPropagation());
+      });
+
+      /* --- Tab: bam tab -> hien pane tuong ung --- */
+      document.querySelectorAll('#tabs [role="tab"]').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('#tabs [role="tab"]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+          document.querySelectorAll('#tabs .pane').forEach((p) => p.classList.toggle('hide', p.id !== tab.dataset.pane));
+        });
+      });
+
+      /* --- Dropzone khong co input: sau khi tha file, hien radio "Loai ho so" (giong dialog upload) --- */
+      const dz2 = document.getElementById('dz2');
+      dz2.addEventListener('dragover', (e) => { e.preventDefault(); dz2.classList.add('over'); });
+      dz2.addEventListener('dragleave', () => dz2.classList.remove('over'));
+      dz2.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dz2.classList.remove('over');
+        const files = [...(e.dataTransfer?.files || [])];
+        const box = document.getElementById('dz2-files');
+        files.forEach((f, i) => {
+          const row = document.createElement('div');
+          row.className = 'file-row';
+          const n = box.children.length + i;
+          row.innerHTML = `<b>${f.name}</b> <span>${(f.size / 1024).toFixed(1)} KB</span>
+            <fieldset><legend>Loai ho so</legend>
+              <label><input type="radio" name="doc-kind-${n}" value="claim" /> Chung tu khieu nai</label>
+              <label><input type="radio" name="doc-kind-${n}" value="other" /> Ho so khac</label>
+              <label><input type="radio" name="doc-kind-${n}" value="id" /> Giay to tuy than</label>
+            </fieldset>`;
+          box.appendChild(row);
+        });
       });
 
       /* --- Mo phong matDatepicker: parse dd/mm/yyyy --- */

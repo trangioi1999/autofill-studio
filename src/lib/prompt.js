@@ -3,6 +3,8 @@
  * JSON ma model phai tra ve.
  */
 
+import { hasValue } from './dummy.js';
+
 export const PLAN_SCHEMA = {
   type: 'object',
   properties: {
@@ -98,8 +100,8 @@ const compactField = (f) => {
   return o;
 };
 
-export function buildUserPrompt({ fields, context, request, persona, language = 'vi' }) {
-  const usable = fields.filter((f) => !f.disabled);
+export function buildUserPrompt({ fields, context, request, persona, language = 'vi', skipFilled = false }) {
+  const usable = fields.filter((f) => !f.disabled && !(skipFilled && hasValue(f)));
   const payload = {
     PAGE: {
       url: context?.url,

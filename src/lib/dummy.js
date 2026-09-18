@@ -113,6 +113,32 @@ const realOptions = (f) => {
 
 const optLabel = (o) => o.label || o.value;
 
+/**
+ * Hang co ten file ("BBTNGP_Khieu_nai_KQPDTD 1.docx") va mot nhom radio loai
+ * ho so: chon option co nhieu tu khoa trung voi ten file nhat. Khong co file
+ * hoac khong option nao trung -> null (goi y chon ngau nhien).
+ */
+function matchByFileName(f, opts) {
+  const near = slug(f.nearby || '');
+  // Ten file co the co khoang trang ("bbtngp_khieu_nai_kqpdtd 1.docx") nen lay
+  // ca cum truoc phan mo rong, khong chi mot token.
+  const m = near.match(/([\w\s._-]+)\.(pdf|docx?|xlsx?|png|jpe?g|zip|rar)\b/);
+  if (!m) return null;
+  const file = `${m[1]}.${m[2]}`.trim();
+  const words = m[1].split(/[^a-z0-9]+/i).filter((w) => w.length >= 3 && !/^\d+$/.test(w));
+  if (!words.length) return null;
+  let best = null;
+  for (const o of opts) {
+    const lw = slug(optLabel(o))
+      .split(/\s+/)
+      .filter((w) => w.length >= 3);
+    // dem so tu chung giua nhan option va ten file
+    const hits = lw.filter((w) => words.includes(w)).length;
+    if (hits && (!best || hits > best.hits)) best = { opt: o, hits };
+  }
+  return best ? { opt: best.opt, file } : null;
+}
+
 /** Chon k muc khac nhau. */
 const sample = (arr, k) => {
   const a = arr.slice();
@@ -249,6 +275,9 @@ export function dummyValue(f) {
   if (kind === 'radio' || kind === 'radiogroup') {
     const opts = realOptions(f);
     if (!opts.length) return null;
+    // "Loai ho so" nam cung hang voi file vua upload -> chon option khop ten file
+    const byFile = matchByFileName(f, opts);
+    if (byFile) return { value: optLabel(byFile.opt), note: `khop ten file "${byFile.file}"` };
     return { value: optLabel(pick(opts)), note: `ngau nhien 1/${opts.length}` };
   }
   if (kind === 'checkbox' || kind === 'checkbox-custom' || kind === 'toggle') {
@@ -257,8 +286,11 @@ export function dummyValue(f) {
     return { value: must || Math.random() < 0.5 ? 'true' : 'false', note: must ? 'bat buoc' : 'ngau nhien' };
   }
   if (kind === 'file') {
-    const img = /image/.test(f.accept || '');
-    return { value: `test-${between(1, 99)}.${img ? 'png' : 'pdf'}`, note: 'file thu' };
+    const acc = String(f.accept || '').toLowerCase();
+    const ext = /image|png|jpg/.test(acc) ? 'png' : /docx|doc\b|word/.test(acc) ? 'docx' : /xlsx|excel/.test(acc) ? 'xlsx' : 'pdf';
+    // ten file theo nhan ("Ho so khieu nai" -> ho-so-khieu-nai-7.pdf) de nguoi xem biet la file gi
+    const base = slug(f.label || 'tai-lieu').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'tai-lieu';
+    return { value: `${base}-${between(1, 99)}.${ext}`, note: 'file thu' };
   }
   if (kind === 'number' || kind === 'range') return { value: numberFor(f, h), note: 'so ngau nhien' };
   if (kind === 'date') {
@@ -287,12 +319,24 @@ export function dummyValue(f) {
  * Ke hoach dien toan bo form bang du lieu thu, cung dinh dang voi plan cua AI
  * de dua thang vao planToSteps(). O nhay cam va o khong doan duoc -> skipped.
  */
-export function dummyPlan(fields) {
+/** O da co gia tri chua? Checkbox chua tick va dropdown con placeholder = chua. */
+export const hasValue = (f) => {
+  const v = String(f.currentValue ?? '').trim();
+  if (!v) return false;
+  if (/^(checkbox|checkbox-custom|toggle|radio)$/.test(f.kind)) return v === 'true';
+  return true;
+};
+
+export function dummyPlan(fields, { skipFilled = true } = {}) {
   const steps = [];
   const skipped = [];
   for (const f of fields) {
     const id = f.gid || f.id;
     if (f.disabled) continue;
+    if (skipFilled && hasValue(f)) {
+      skipped.push({ id, reason: 'da co gia tri' });
+      continue;
+    }
     const v = dummyValue(f);
     if (!v) {
       skipped.push({ id, reason: isSensitive(f) ? 'nhay cam (mat khau / OTP / the)' : 'khong co lua chon de chon' });

@@ -695,6 +695,19 @@ chrome.runtime.onMessage.addListener((m) => {
 
   if (m.phase === 'generate') ev(m.message || 'Dang hoi AI...');
 
+  if (m.phase === 'tabs') {
+    finishEv();
+    ev(m.count ? `Thay ${m.count} tab: ${(m.labels || []).join(' · ')}` : m.message || 'Khong co tab', { kind: 'idle' });
+  }
+  if (m.phase === 'tab') {
+    finishEv();
+    ev(`Tab ${m.index}/${m.count}: ${m.label}`, { kind: 'idle' });
+  }
+  if (m.phase === 'tab-done') {
+    finishEv();
+    if (m.error) ev(`Tab "${m.label}": ${/Khong tim thay field/.test(m.error) ? 'khong co o nhap lieu, bo qua' : m.error}`, { kind: 'idle' });
+  }
+
   if (m.phase === 'pass') {
     finishEv();
     ev(m.message || `Luot ${m.pass}: ${m.count} o vua duoc mo khoa`, { kind: 'idle' });
@@ -723,6 +736,7 @@ chrome.runtime.onMessage.addListener((m) => {
     );
     if (state.skipped.length) card.append(el('div', 'meta', `Bo qua ${state.skipped.length} o`));
     if (m.randomFilled) card.append(el('div', 'meta', `${m.randomFilled} o co danh sach lua chon AI bo trong / dua sai -> da chon ngau nhien`));
+    if (m.skippedFilled) card.append(el('div', 'meta', `Bo qua ${m.skippedFilled} o da co gia tri san`));
     if (state.planSource === 'ai' && m.provider) card.append(el('div', 'meta', viaLabel(m)));
     const row = el('div', 'row');
     row.append(btn('Xem ke hoach', () => switchView('plan')));
@@ -873,7 +887,7 @@ $('#btn-run').onclick = async () => {
     setBusy(true);
     ev('Dien du lieu thu: dropdown / multi chon ngau nhien, so ngau nhien, text theo nhan', { kind: 'idle' });
     try {
-      const r = await send({ type: 'AF_DUMMY_FILL' });
+      const r = await send({ type: 'AF_DUMMY_FILL', allTabs: chips.allTabs });
       if (r?.error) throw new Error(r.error);
     } catch (e) {
       finishEv('err', '✕');
@@ -907,7 +921,7 @@ $('#btn-run').onclick = async () => {
   setBusy(true);
   ev(request ? `Yeu cau: ${request}` : 'Dien toan bo form bang du lieu hop ly', { kind: 'idle' });
   try {
-    const r = await send({ type: 'AF_AUTOFILL', request });
+    const r = await send({ type: 'AF_AUTOFILL', request, allTabs: chips.allTabs });
     if (r?.error) throw new Error(r.error);
   } catch (e) {
     finishEv('err', '✕');
@@ -969,9 +983,10 @@ $('#btn-scan').onclick = async () => {
 };
 
 /* Chip bat/tat: bam 1 lan la bat (chip to mau), bam lai la tat. */
-const chips = { highlight: false, pick: false };
+const chips = { highlight: false, pick: false, allTabs: false };
 
 function renderChips() {
+  $('#btn-alltabs').classList.toggle('on', chips.allTabs);
   $('#btn-highlight').classList.toggle('on', chips.highlight);
   $('#btn-pick').classList.toggle('on', chips.pick);
   $('#btn-pick').textContent = chips.pick ? 'Dang chon… (Esc)' : 'Chon element';
@@ -994,6 +1009,11 @@ async function setHighlight(on) {
 }
 
 $('#btn-highlight').onclick = () => setHighlight(!chips.highlight);
+$('#btn-alltabs').onclick = () => {
+  chips.allTabs = !chips.allTabs;
+  renderChips();
+  toast(chips.allTabs ? 'Se bam tung tab tren trang va dien tung tab' : 'Chi dien tab dang mo', 'info');
+};
 
 $('#btn-clear').onclick = async () => {
   chips.highlight = false;
