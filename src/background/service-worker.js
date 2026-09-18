@@ -11,7 +11,7 @@ import {
   renderSnapshot, renderState, buildAgentPrompt, compactHistory, actionToStep,
 } from '../lib/agent.js';
 import { screenKey } from '../lib/screen.js';
-import { dummyPlan, fillGaps, newlyEnabled } from '../lib/dummy.js';
+import { dummyPlan, fillGaps, newlyEnabled, hasValue } from '../lib/dummy.js';
 import { normalizeUsage, addUsage } from '../lib/usage.js';
 
 /* ------------------------------------------------------------------ setup */
@@ -124,7 +124,10 @@ async function scanTab(tabId, { deep = true } = {}) {
 
 async function generatePlan({ tabId, request, fields, context }) {
   const settings = await getSettings();
-  const trimmed = fields.slice(0, settings.maxFields);
+  // O da co gia tri: khong gui cho AI, khong dien de len
+  const trimmed = (settings.skipFilled ? fields.filter((f) => !hasValue(f)) : fields).slice(0, settings.maxFields);
+  const skippedFilled = settings.skipFilled ? fields.length - fields.filter((f) => !hasValue(f)).length : 0;
+  if (!trimmed.length) return { steps: [], skipped: [], randomFilled: 0, raw: '', usage: null, ms: 0, provider: settings.provider, via: '', skippedFilled };
 
   const user = buildUserPrompt({
     fields: trimmed,
@@ -132,6 +135,7 @@ async function generatePlan({ tabId, request, fields, context }) {
     request,
     persona: settings.persona,
     language: settings.language,
+    skipFilled: settings.skipFilled,
   });
 
   const t0 = Date.now();
@@ -150,6 +154,7 @@ async function generatePlan({ tabId, request, fields, context }) {
     steps,
     skipped: plan.skipped || [],
     randomFilled,
+    skippedFilled,
     raw: res.raw,
     usage: normalizeUsage(res.usage),
     ms: Date.now() - t0,
@@ -487,7 +492,7 @@ async function autofill({ tabId, request, onEvent }) {
   const plan = await generatePlan({ tabId, request, fields, context });
   emit({
     phase: 'planned', steps: plan.steps, skipped: plan.skipped, ms: plan.ms, usage: plan.usage,
-    provider: plan.provider, via: plan.via, randomFilled: plan.randomFilled,
+    provider: plan.provider, via: plan.via, randomFilled: plan.randomFilled, skippedFilled: plan.skippedFilled,
   });
 
   emit({ phase: 'run', message: `Dang dien ${plan.steps.length} field...` });
@@ -554,6 +559,44 @@ async function fillDependentPasses({ tabId, prevFields, context, plan, emit, max
   return { fields: seen, results: allResults };
 }
 
+/* ------------------------------------------------------------------ tabs */
+
+/**
+ * Trang co nhieu tab (mat-tab-group, nav-tabs, ant-tabs...): bam tung tab,
+ * cho noi dung hien, roi chay `fillOne()` cho tab do. Tab khong co field thi
+ * bao va di tiep. Chi xet nhom tab ngoai cung (nhom dau tien co >= 2 tab).
+ */
+async function fillAllTabs({ tabId, fillOne, emit }) {
+  await ensureInjected(tabId, 0);
+  const r = await ask(tabId, 0, { type: 'AF_TABS' });
+  const tabs = r?.tabs || [];
+  if (tabs.length < 2) {
+    emit({ phase: 'tabs', count: 0, message: 'Trang nay khong co thanh tab — dien trang hien tai' });
+    return [await fillOne()];
+  }
+  emit({ phase: 'tabs', count: tabs.length, labels: tabs.map((t) => t.label) });
+  const out = [];
+  for (let i = 0; i < tabs.length; i++) {
+    const t = tabs[i];
+    if (agentStop.has(tabId)) break;
+    emit({ phase: 'tab', index: i + 1, count: tabs.length, label: t.label });
+    const c = await ask(tabId, 0, { type: 'AF_TAB_CLICK', index: i });
+    if (!c?.ok) {
+      emit({ phase: 'tab-done', index: i + 1, label: t.label, ok: 0, total: 0, error: c?.error || 'khong bam duoc tab' });
+      continue;
+    }
+    await new Promise((res) => setTimeout(res, 700)); // doi noi dung tab render (animation, lazy load)
+    try {
+      const res = await fillOne();
+      out.push({ tab: t.label, ...res });
+      emit({ phase: 'tab-done', index: i + 1, label: t.label, ok: res?.ok ?? 0, total: res?.total ?? 0 });
+    } catch (e) {
+      emit({ phase: 'tab-done', index: i + 1, label: t.label, ok: 0, total: 0, error: e.message });
+    }
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------- dummy fill */
 
 /** Che do "Ngau nhien": quet -> sinh du lieu thu -> dien. Khong goi AI, khong can key. */
@@ -567,9 +610,10 @@ async function dummyFill({ tabId }) {
   if (!fields.length) throw new Error('Khong tim thay field nao tren trang.');
 
   const t0 = Date.now();
-  const plan = dummyPlan(fields);
+  const plan = dummyPlan(fields, { skipFilled: settings.skipFilled });
   const steps = planToSteps(plan, fields);
-  emit({ phase: 'planned', steps, skipped: plan.skipped, ms: Date.now() - t0, source: 'random' });
+  const skippedFilled = plan.skipped.filter((x) => x.reason === 'da co gia tri').length;
+  emit({ phase: 'planned', steps, skipped: plan.skipped, ms: Date.now() - t0, source: 'random', skippedFilled });
 
   emit({ phase: 'run', message: `Dang dien ${steps.length} field bang du lieu thu...` });
   const results = await runPlan({ tabId, steps });
@@ -582,7 +626,7 @@ async function dummyFill({ tabId }) {
     prevFields: fields,
     emit,
     plan: async (fresh) => {
-      const p = dummyPlan(fresh);
+      const p = dummyPlan(fresh, { skipFilled: settings.skipFilled });
       return { steps: planToSteps(p, fresh), skipped: p.skipped, source: 'random' };
     },
   });
@@ -632,8 +676,8 @@ const routes = {
   AF_SCAN_TAB: (m) => scanTab(m.tabId, { deep: m.deep }),
   AF_GENERATE: (m) => generatePlan(m),
   AF_RUN_PLAN: (m) => runPlan(m),
-  AF_AUTOFILL: (m) => autofill(m),
-  AF_DUMMY_FILL: (m) => dummyFill(m),
+  AF_AUTOFILL: (m) => (m.allTabs ? fillAllTabs({ tabId: m.tabId, emit: (e) => chrome.runtime.sendMessage({ type: 'AF_EVENT', ...e }).catch(() => {}), fillOne: () => autofill(m) }) : autofill(m)),
+  AF_DUMMY_FILL: (m) => (m.allTabs ? fillAllTabs({ tabId: m.tabId, emit: (e) => chrome.runtime.sendMessage({ type: 'AF_EVENT', ...e }).catch(() => {}), fillOne: () => dummyFill(m) }) : dummyFill(m)),
 
   AF_HIGHLIGHT_TAB: async (m) => {
     const frames = await listFrames(m.tabId);

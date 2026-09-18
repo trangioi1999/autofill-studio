@@ -46,6 +46,21 @@
 
     AF_STEP: async (msg) => ({ ok: true, result: await AF.Actions.runStep(msg.step) }),
 
+    /* ------------------------------------------------------------- tabs */
+
+    AF_TABS: () => ({ ok: true, tabs: AF.Scanner.tabs().map((t, i) => ({ index: i, label: t.label, selected: t.selected })) }),
+
+    AF_TAB_CLICK: async (msg) => {
+      const list = AF.Scanner.tabs();
+      const t = list[msg.index];
+      if (!t) return { ok: false, error: `khong co tab #${msg.index}` };
+      if (t.selected) return { ok: true, already: true };
+      await AF.Actions.clickEl(t.el);
+      // doi tab duoc danh dau selected (mat-tab, bootstrap) hoac 400ms
+      await AF.waitFor(() => AF.Scanner.tabs()[msg.index]?.selected, { timeout: 1500, interval: 80 });
+      return { ok: true };
+    },
+
     AF_HIGHLIGHT: (msg) => {
       AF.Picker.highlightFields(msg.fields || AF.Scanner.scan());
       return { ok: true };

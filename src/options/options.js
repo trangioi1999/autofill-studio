@@ -32,6 +32,7 @@ const FIELDS = {
   stopOnError: '#stopOnError',
   randomGaps: '#randomGaps',
   fillDependents: '#fillDependents',
+  skipFilled: '#skipFilled',
   autoSaveSnapshot: '#autoSaveSnapshot',
   autoSuggestSnapshot: '#autoSuggestSnapshot',
   typeDelay: '#typeDelay',

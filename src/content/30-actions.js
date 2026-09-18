@@ -554,7 +554,19 @@
     const out = [];
     for (const s of specs) {
       const name = s.name || 'file.txt';
-      const mime = s.mime || (/\.png$/i.test(name) ? 'image/png' : /\.pdf$/i.test(name) ? 'application/pdf' : 'text/plain');
+      const mime =
+        s.mime ||
+        (/\.png$/i.test(name)
+          ? 'image/png'
+          : /\.jpe?g$/i.test(name)
+          ? 'image/jpeg'
+          : /\.pdf$/i.test(name)
+          ? 'application/pdf'
+          : /\.docx$/i.test(name)
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : /\.xlsx$/i.test(name)
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'text/plain');
       let parts;
       if (s.dataUrl && /^data:/.test(s.dataUrl)) {
         const [, b64] = s.dataUrl.split(',');

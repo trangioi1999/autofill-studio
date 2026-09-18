@@ -48,6 +48,8 @@ export const DEFAULTS = {
   randomGaps: true,
   // Sau khi dien, quet lai: o vua duoc mo khoa (phu thuoc o khac) thi dien tiep, toi da 2 luot
   fillDependents: true,
+  // O da co gia tri (nguoi dung / app dien san) thi de yen, khong dien de len
+  skipFilled: true,
 
   // Agent
   agentMaxSteps: 12,

@@ -122,6 +122,11 @@
       return 'text';
     }
     if (el.isContentEditable) return 'editor';
+    if (isDropzone(el)) {
+      // co input file ben trong thi input do da la field roi
+      if (el.querySelector && el.querySelector('input[type="file"]')) return null;
+      return 'file';
+    }
 
     // widget custom
     const tagLower = tag.toLowerCase();
@@ -164,6 +169,15 @@
       if (r.top <= top && (!best || r.top > AF.rectOf(best).top)) best = h;
     }
     return best ? AF.norm(best.textContent).slice(0, 120) : '';
+  };
+
+  /** Text cua hang / item chua field (tr, li, .file-row, .item...), tru chinh field. */
+  const nearbyText = (el) => {
+    const row = AF.closestDeep(el, 'tr,li,.file-row,.row-item,.item,.list-item,.attachment,.file-item');
+    if (!row) return '';
+    const clone = row.cloneNode(true);
+    clone.querySelectorAll('input,textarea,select,button').forEach((n) => n.remove());
+    return AF.norm(clone.textContent).slice(0, 200);
   };
 
   const helpTextOf = (el) => {
@@ -356,15 +370,27 @@
     let visible = AF.isVisible(el);
     const host = !visible ? AF.widgetHostOf(el) : null;
     if (!visible && host && AF.isVisible(host)) visible = true;
-    if (!visible && kind !== 'file' && !el.hasAttribute('aria-hidden')) {
-      // van giu file input an, con lai bo
-      if (kind !== 'file') return null;
-    }
+    // <input type="file"> thuong bi an co y (nut "Chon tep" ve tay) -> van giu.
+    // Nhung dropzone an la do no nam trong tab / dialog dang dong -> bo qua,
+    // neu khong se tha file vao tab dang khong hien.
+    if (!visible && !(kind === 'file' && el.tagName === 'INPUT')) return null;
 
     let label = AF.accessibleName(el) || AF.labelTextOf(el);
     if (kind === 'radiogroup' && el.tagName !== 'INPUT') label = radioGroupLabel(el) || label;
     // mat-checkbox / mat-slide-toggle: nhan nam trong host (label[for] cua input an)
     if (!label && (kind === 'checkbox-custom' || kind === 'toggle')) label = AF.norm(el.textContent).slice(0, 140);
+    if (kind === 'file' && el.tagName !== 'INPUT') {
+      // dropzone: nhan la tieu de dialog / section chua no, roi moi den text trong vung
+      const dlg = AF.closestDeep(
+        el,
+        '[role="dialog"],mat-dialog-container,.modal,.cdk-dialog-container,section,.section,.card,mat-card,mat-expansion-panel,.upload-section,fieldset'
+      );
+      const h = dlg && dlg.querySelector('h1,h2,h3,h4,legend,[mat-dialog-title],.mat-mdc-dialog-title,.modal-title,.card-title,mat-panel-title');
+      const fromHead = h ? AF.norm(h.textContent).slice(0, 140) : '';
+      // chu trong chinh vung keo tha ("Keo tep cua Anh/Chi vao day") la huong dan,
+      // khong phai ten loai ho so -> chi dung khi khong tim duoc tieu de nao
+      label = fromHead || sectionOf(el) || AF.norm(el.textContent).slice(0, 140);
+    }
     const r = AF.rectOf(host && AF.isVisible(host) ? host : el);
 
     let options = [];
@@ -419,12 +445,46 @@
       options: options.slice(0, 80),
       optionsKnown: options.length > 0 || kind === 'select' || kind === 'multiselect',
       section: sectionOf(el).slice(0, 100),
+      // Text cua hang / the chua field — dung de khop radio "Loai ho so" voi
+      // ten file vua upload nam cung hang
+      nearby: nearbyText(el),
       help: helpTextOf(el),
       selector: cssPath(el),
       rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
       inShadow: el.getRootNode() instanceof ShadowRoot,
       visible,
     };
+  };
+
+  /* --------------------------------------------------------------- tabs */
+
+  const TAB_SELECTOR = '[role="tab"], .mat-mdc-tab, .mat-tab-label, .nav-tabs .nav-link, .ant-tabs-tab, .p-tabview-nav li, .MuiTab-root, .tabs .tab, [data-toggle="tab"], [data-bs-toggle="tab"]';
+
+  const isTabSelected = (el) =>
+    el.getAttribute('aria-selected') === 'true' ||
+    /(^|\s)(active|mdc-tab--active|mat-mdc-tab-active|ant-tabs-tab-active|p-highlight|Mui-selected|is-active|selected)(\s|$)/.test(el.className || '') ||
+    (el.parentElement && /(^|\s)(active|ant-tabs-tab-active|p-highlight)(\s|$)/.test(el.parentElement.className || ''));
+
+  /**
+   * Danh sach tab cua nhom tab ngoai cung (nhom dau tien co >= 2 tab nhin thay).
+   * Tra ve [{ el, label, selected }].
+   */
+  const tabs = () => {
+    const all = AF.deepQueryAll(TAB_SELECTOR).filter((t) => AF.isVisible(t) && !t.disabled && t.getAttribute('aria-disabled') !== 'true');
+    if (!all.length) return [];
+    // gom theo tablist / container gan nhat
+    const groups = new Map();
+    for (const t of all) {
+      const g = AF.closestDeep(t, '[role="tablist"],.mat-mdc-tab-labels,.mat-tab-labels,.nav-tabs,.ant-tabs-nav,.p-tabview-nav,.MuiTabs-flexContainer') || t.parentElement;
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(t);
+    }
+    let best = null;
+    for (const [, list] of groups) {
+      if (list.length >= 2 && (!best || AF.rectOf(list[0]).top < AF.rectOf(best[0]).top)) best = list;
+    }
+    if (!best) return [];
+    return best.map((el) => ({ el, label: AF.norm(el.textContent || el.getAttribute('aria-label') || '').slice(0, 80), selected: isTabSelected(el) }));
   };
 
   const CANDIDATE_SELECTOR = [
@@ -452,7 +512,18 @@
     '[role="switch"]',
     '[role="radiogroup"]',
     '[role="spinbutton"]',
+    // vung keo tha file khong co <input type=file> (ngx-file-drop, react-dropzone, custom)
+    '.dropzone', '[class*="dropzone"]', '[class*="drop-zone"]', '[class*="upload-area"]', '[class*="upload-zone"]',
+    '[class*="file-drop"]', 'ngx-file-drop', '.ngx-file-drop__drop-zone', '[appdragdrop]', '[dragdrop]', '[ngfdrop]',
   ].join(',');
+
+  const DROP_TEXT = /keo (tha|tep|file)|tha (tep|file)|drag.*drop|drop (file|here)|chon tep|browse file|upload/i;
+  const isDropzone = (el) => {
+    if (el.tagName === 'INPUT' || el.tagName === 'BUTTON') return false;
+    if (/dropzone|drop-zone|upload-area|upload-zone|file-drop|ngx-file-drop/i.test(el.className || '') || /^NGX-FILE-DROP$/.test(el.tagName)) return true;
+    if (el.hasAttribute('appdragdrop') || el.hasAttribute('dragdrop') || el.hasAttribute('ngfdrop')) return true;
+    return DROP_TEXT.test(AF.slug(el.textContent || '').slice(0, 200)) && (el.textContent || '').length < 300;
+  };
 
   /** Gom radio cung name thanh 1 field duy nhat. */
   const dedupeRadios = (fields) => {
@@ -481,6 +552,8 @@
   };
 
   AF.Scanner = {
+    tabs,
+
     /** Quet nhanh (sync). */
     scan() {
       const els = AF.deepQueryAll(CANDIDATE_SELECTOR);
@@ -491,6 +564,8 @@
         // bo o tim kiem nam trong panel dropdown dang mo — no khong phai field cua form
         if (AF.closestDeep(AF.composedParent(el), '.cdk-overlay-container,.mat-mdc-select-panel,.mat-select-panel,.ant-select-dropdown,.p-dropdown-panel,.p-multiselect-panel,.ng-dropdown-panel,[role="listbox"]')) continue;
         if (/mat-select-search-input|select-search|dropdown-filter|p-dropdown-filter|p-multiselect-filter/i.test(el.className || '')) continue;
+        // dropzone long nhau: chi giu cai ngoai cung
+        if (el.tagName !== 'INPUT' && isDropzone(el) && AF.closestDeep(AF.composedParent(el), '.dropzone,[class*="dropzone"],[class*="drop-zone"],[class*="upload-area"],[class*="file-drop"],ngx-file-drop')) continue;
         // radio nam trong mat-radio-group / [role=radiogroup]: host da la 1 field "radiogroup"
         if (el.tagName === 'INPUT' && el.type === 'radio' && AF.closestDeep(AF.composedParent(el), 'mat-radio-group,nz-radio-group,[role="radiogroup"]')) continue;
         // checkbox an trong mat-checkbox / mat-slide-toggle...: host (nhin thay) da la 1 field
